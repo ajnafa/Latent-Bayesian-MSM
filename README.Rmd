@@ -1,0 +1,44 @@
+---
+output: 
+  github_document
+bibliography: "assets/references.bib"
+csl: "assets/apsa.csl"
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "README-",
+  fig.retina = 3
+)
+
+library(emoji)
+```
+
+# Taking Uncertainty Seriously: Bayesian Marginal Structural Models for Causal Inference in Political Science
+
+<!-- badges: start -->
+<!-- badges: end -->
+
+### Abstract
+
+> While the past two decades have been characterized by considerable progress in developing approaches to causal inference in situations where true experimental manipulation is either impractical or impossible, as is the case in much of political science, commonly employed approaches have developed largely within the frameworks of classical econometrics and frequentist non-parametrics [@Blackwell2018]. Unfortunately, these frameworks are limited in their ability to answer many of the questions scholars of international relations and comparative politics are often interested in since they rely heavily upon the assumption of long-run replication rather than quantifying uncertainty directly [@Gill1999; @Gill2020; @Schrodt2014; @Western1994]. In this article we develop a Bayesian approach to the estimation of marginal structural models for causal inference with cross-sectional time series and panel data. We assess the proposed models' performance relative to existing procedures in a simulation study and two empirical examples, demonstrating that our approach performs well in terms of recovering the true parameter values while also lending itself to a more direct and intuitive interpretation. To ensure accessibility, we provide a flexible implementation of the proposed model in the R package `brms` [@Buerkner2017; @Buerkner2018].
+
+
+## Licenses
+
+**Text and figures:** All prose and images are licensed under Creative Commons ([CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/)).
+
+**Code:** All code is licensed under the [MIT License](LICENSE.md).
+
+
+## Contributions and Code of Conduct
+
+We welcome contributions from everyone. Before you get started, please see our [contributor guidelines](CONTRIBUTING.md). Please note that this project is released with a [Contributor Code of Conduct](https://contributor-covenant.org/version/2/0/CODE_OF_CONDUCT.html). By contributing to this project, you agree to abide by its terms.
+
+---
+
+## References
