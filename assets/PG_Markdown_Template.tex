@@ -90,9 +90,8 @@ $endif$
 $if(verbatim-in-note)$
 \usepackage{fancyvrb}
 $endif$
-$if(tables)$
+% Packages for tables
 \usepackage{booktabs, longtable, multicol, supertabular, pdflscape, tabu, threeparttable, threeparttablex}
-$endif$
 
 % Captions for Tables and Figures
 \usepackage{caption}
@@ -285,20 +284,33 @@ $endif$
 	$if(title)$
 	% Distinct title Page Style Settings
 	\thispagestyle{titlepage}
-	\vspace*{4pt}
+	\vspace*{2pt}
 	\begin{flushleft}
 		\fontsize{22pt}{22pt}\selectfont{%
 			\bfseries $title$$if(subtitle)$: $subtitle$$endif$
 		}\blfootnote{\hspace*{-\footnotemargin}% 
 			$if(firstfooter)$$firstfooter$$endif$
 		}\\%
-		\vspace*{12pt}
-		\fontsize{18pt}{18pt}\selectfont\textit{$if(anonymous)$$else$$author.name$$endif$}
-		\fontsize{14pt}{14pt}\orcid{$orcid$} \\ %\openmaterials{$github$} 
-		\vspace*{12pt}                                                                                  
-		\fontsize{14pt}{14pt}\selectfont $if(anonymous)$$else$$author.affiliation$$endif$
 	\end{flushleft}
-	\vspace*{22pt}
+		\vspace*{10pt}
+		$if(twoauthor)$
+		\begin{center}
+			\begin{tabular}[H]{ccc}
+				\fontsize{16pt}{16pt}\selectfont\textit{$first-author.name$}\fontsize{12pt}{12pt}\orcid{$first-author.orcid$} & & \fontsize{16pt}{16pt}\selectfont\textit{$second-author.name$}\fontsize{12pt}{12pt}\orcid{$second-author.orcid$}\\
+				\addlinespace[0.3em]
+				\fontsize{12pt}{12pt}\selectfont $first-author.affiliation$ & & \fontsize{12pt}{12pt}\selectfont $second-author.affiliation$\\
+			\end{tabular}
+		\end{center}
+		$else$
+		\begin{flushleft}
+			\vspace*{12pt}
+			\fontsize{18pt}{18pt}\selectfont\textit{$if(anonymous)$$else$$author.name$$endif$}
+			\fontsize{14pt}{14pt}\orcid{$author.orcid$} \\ %\openmaterials{$github$} 
+			\vspace*{12pt}                                                                                  
+			\fontsize{14pt}{14pt}\selectfont $if(anonymous)$$else$$author.affiliation$$endif$
+		\end{flushleft}
+		$endif$
+	\vspace*{20pt}
 	$if(abstract)$
 	\begin{abstract}
 		\noindent $abstract$
