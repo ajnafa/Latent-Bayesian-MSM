@@ -3,39 +3,43 @@
 
 # Taking Uncertainty Seriously: Bayesian Marginal Structural Models for Causal Inference in Political Science
 
+### Andrew Heiss and A. Jordan Nafa
+
 <!-- badges: start -->
 <!-- badges: end -->
 
 ### Abstract
 
-> While the past two decades have been characterized by considerable
-> progress in developing approaches to causal inference in situations
-> where true experimental manipulation is either impractical or
-> impossible, as is the case in much of political science, commonly
-> employed approaches have developed largely within the frameworks of
-> classical econometrics and frequentist non-parametrics (Blackwell and
-> Glynn 2018). Unfortunately, these frameworks are limited in their
-> ability to answer many of the questions scholars of international
-> relations and comparative politics are often interested in since they
-> rely heavily upon the assumption of long-run replication rather than
-> quantifying uncertainty directly (Gill 1999; Gill and Heuberger 2020;
-> Schrodt 2014; Western and Jackman 1994). In this article we develop a
-> Bayesian approach to the estimation of marginal structural models for
-> causal inference with cross-sectional time series and panel data. We
-> assess the proposed models’ performance relative to existing
-> procedures in a simulation study and two empirical examples,
-> demonstrating that our approach performs well in terms of recovering
-> the true parameter values while also lending itself to a more direct
-> and intuitive interpretation. To ensure accessibility, we provide a
-> flexible implementation of the proposed model in the R package `brms`
-> (Bürkner 2017, 2018).
+> The past two decades have been characterized by considerable progress
+> in developing approaches to causal inference in situations where true
+> experimental manipulation is either impractical or impossible. With
+> few exceptions, however, commonly employed techniques in political
+> science have developed largely within the framework of frequentist
+> non-parametrics (i.e., Blackwell and Glynn 2018; Imai and Kim 2019;
+> Torres 2020). In this article, we argue that common approaches rest
+> fundamentally upon assumptions that are difficult to defend in many
+> areas of political research and highlight the importance of
+> quantifying uncertainty in causal estimands (Gill 1999; Gill and
+> Heuberger 2020; Schrodt 2014; Western and Jackman 1994). Extending the
+> approach to causal inference for cross-sectional time series and panel
+> data under selection on observables introduced by Blackwell and Glynn
+> (2018), we develop a two-step Bayesian approach to the estimation of
+> marginal structural models that allows scholars to properly quantify
+> and propogate uncertainty. We demonstrate our proposed approach in the
+> context of parametric survival analysis and Gaussian state space
+> models via a simulation study and two empirical examples. We
+> demonstrate that our procedure performs well compared to existing
+> techniques in terms of recovering the true parameter values while also
+> lending itself to a direct, intuitive interpretation and provide
+> flexible open source software implementing the proposed method.
 
 ## Licenses
 
 **Text and figures:** All prose and images are licensed under Creative
 Commons ([CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/)).
 
-**Code:** All code is licensed under the [MIT License](LICENSE.md).
+**Code:** All code is licensed under the [BSD 2-Clause
+License](LICENSE.md).
 
 ## Contributions and Code of Conduct
 
@@ -59,21 +63,6 @@ Observables.” *American Political Science Review* 112: 1067–82.
 
 </div>
 
-<div id="ref-Buerkner2017" class="csl-entry">
-
-Bürkner, Paul-Christian. 2017. “Brms: An r Package for Bayesian
-Multilevel Models Using Stan.” *Journal of Statistical Software* 80:
-1–28.
-
-</div>
-
-<div id="ref-Buerkner2018" class="csl-entry">
-
-———. 2018. “Advanced Bayesian Multilevel Modeling with the r Package
-Brms.” *The R Journal* 10: 395–411.
-
-</div>
-
 <div id="ref-Gill1999" class="csl-entry">
 
 Gill, Jeff. 1999. “The Insignificance of Null Hypothesis Significance
@@ -90,10 +79,26 @@ Robert Franzese. London, UK: SAGE, 961–84.
 
 </div>
 
+<div id="ref-Imai2019" class="csl-entry">
+
+Imai, Kosuke, and In Song Kim. 2019. “When Should We Use Unit Fixed
+Effects Regression Models for Causal Inference with Longitudinal Data?”
+*American Journal of Political Science* 63(2): 467–90.
+
+</div>
+
 <div id="ref-Schrodt2014" class="csl-entry">
 
 Schrodt, Philip A. 2014. “Seven Deadly Sins of Contemporary Quantitative
 Political Analysis.” *Journal of Peace Research* 51: 287–300.
+
+</div>
+
+<div id="ref-Torres2020" class="csl-entry">
+
+Torres, Michelle. 2020. “Estimating Controlled Direct Effects Through
+Marginal Structural Models.” *Political Science Research and Methods*
+8(3): 391–408.
 
 </div>
 
