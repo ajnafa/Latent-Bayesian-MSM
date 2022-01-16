@@ -1,15 +1,7 @@
 /* Bayesian Latent Inverse Probability Estimator with a Gaussian Likelihood
 * Author: A. Jordan Nafa; Stan Version 2.28.1; Last Revised 12-23-2021 */
 functions {
-  // Weighted Log PDF of the Gaussian Pseudo-Likelihood
-  real normal_ipw_lpdf(vector y, vector mu, real sigma, vector w_tilde, int N) {
-    real weighted_term;
-    weighted_term = 0.00;
-    for (n in 1:N) {
-      weighted_term = weighted_term + w_tilde[n] * (normal_lpdf(y[n] | mu[n], sigma));
-    }
-    return weighted_term;
-  }
+  # include <Latent_IPW_Gaussian_Functions.stan>
 }
 data {
   // Data for the outcome model
@@ -26,10 +18,8 @@ transformed data {
   vector[N] ipw_mu; // Mean of the Population-Level IP Weights
   vector[N] ipw_sigma; // SD of the Population-Level IP Weights
   // Calculate the location and scale for each observation weight
-  for (n in 1:N) {
-    ipw_mu[n] = mean(IPW[, n]);
-    ipw_sigma[n] = sd(IPW[, n]);
-  }
+  ipw_mu = weights_mean(IPW, N);
+  ipw_sigma = weights_scale(IPW, N);
   // Centering the Predictor Matrix
   int Kc = K - 1;
   matrix[N, Kc] Xc; // Centered version of X without an Intercept
