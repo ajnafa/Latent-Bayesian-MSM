@@ -10,28 +10,25 @@
 
 ### Abstract
 
-> The past two decades have been characterized by considerable progress
-> in developing approaches to causal inference in situations where true
-> experimental manipulation is either impractical or impossible. With
-> few exceptions, however, commonly employed techniques in political
-> science have developed largely within the framework of frequentist
-> non-parametrics (i.e., Blackwell and Glynn 2018; Imai and Kim 2019;
-> Torres 2020). In this article, we argue that common approaches rest
+> While the past two decades have been characterized by considerable
+> progress in developing approaches to causal inference in situations
+> where true experimental manipulation is either impractical or
+> impossible. With few exceptions, however, commonly employed techniques
+> in political science have developed largely within the frequentist
+> framework (i.e., Blackwell and Glynn 2018; Imai and Kim 2019; Torres
+> 2020). In this article, we argue that common approaches rest
 > fundamentally upon assumptions that are difficult to defend in many
-> areas of political research and highlight the importance of
-> quantifying uncertainty in causal estimands (Gill 1999; Gill and
+> areas of political research and highlight the benefits of quantifying
+> uncertainty in the estimation of causal effects (Gill 1999; Gill and
 > Heuberger 2020; Schrodt 2014; Western and Jackman 1994). Extending the
 > approach to causal inference for cross-sectional time series and panel
 > data under selection on observables introduced by Blackwell and Glynn
 > (2018), we develop a two-step Bayesian approach to the estimation of
-> marginal structural models that allows scholars to properly quantify
-> and propogate uncertainty. We demonstrate our proposed approach in the
-> context of parametric survival analysis and Gaussian state space
-> models via a simulation study and two empirical examples. We
-> demonstrate that our procedure performs well compared to existing
-> techniques in terms of recovering the true parameter values while also
-> lending itself to a direct, intuitive interpretation and provide
-> flexible open source software implementing the proposed method.
+> marginal structural models. We demonstrate our proposed procedure in
+> the context of parametric survival analysis and Gaussian state-space
+> models via a simulation study and two empirical examples. Finally, we
+> provide flexible open-source software implementing the proposed
+> method.
 
 ## Licenses
 
