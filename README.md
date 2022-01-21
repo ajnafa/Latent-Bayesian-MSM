@@ -3,7 +3,7 @@
 
 # Taking Uncertainty Seriously: Bayesian Marginal Structural Models for Causal Inference in Political Science
 
-### Andrew Heiss and A. Jordan Nafa
+### A. Jordan Nafa and Andrew Heiss
 
 <!-- badges: start -->
 <!-- badges: end -->
@@ -25,7 +25,7 @@
 > selection on observables introduced by Blackwell and Glynn (2018), we
 > develop a two-step Bayesian approach to the estimation of marginal
 > structural models. We demonstrate our proposed procedure in the
-> context of parametric survival analysis and Gaussian state-space
+> context of parametric survival analysis and linear mixed effects
 > models via a simulation study and two empirical examples. Finally, we
 > provide flexible open-source software implementing the proposed
 > method.
