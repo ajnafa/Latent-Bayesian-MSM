@@ -105,8 +105,9 @@ hlogit_prop_fit <- hlogit_prop_mod$sample(
 )
 
 # Write the model object to an RDS file
-hlogit_prop_fit$save_object(file = str_c(fits_dir, "Design_Stage_HLogit_1.rds"))
+#hlogit_prop_fit$save_object(file = str_c(fits_dir, "Design_Stage_HLogit_1.rds"))
+hlogit_prop_fit <- read_rds(str_c(fits_dir, "Design_Stage_HLogit_1.rds"))
 
 # Leave One Out Cross Validation
-hlogit_prop_fit_loo <- hlogit_prop_fit$loo(cores = 4L)
-
+#hlogit_prop_fit_loo <- hlogit_prop_fit$loo(cores = 4L)
+#write_rds(hlogit_prop_fit_loo, str_c(fits_dir, "Design_Stage_HLogit_1_LOO.rds"))
