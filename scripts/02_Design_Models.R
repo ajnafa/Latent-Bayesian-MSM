@@ -56,7 +56,7 @@ sim_data_df <- sim_data_ls$data %>%
   mutate(across(
     c(time, beta:delta),
     list(
-      wi = ~ .x - mean(.x),
+      wi = ~ (.x - mean(.x))/(2*sd(.x)),
       be = ~ mean(.x)
     )
   )) %>% 
@@ -90,7 +90,7 @@ hlogit_prop_mod <- cmdstan_model(
 # Print the model code
 str_split(hlogit_prop_mod$code(), pattern = ";", simplify = T)
 
-# Fit the Design-Stage Model
+# Fit the Design-Stage Model; Run Time is 36.0 seconds
 hlogit_prop_fit <- hlogit_prop_mod$sample(
   data = hlogit_stan_data,
   seed = 123456,
@@ -99,7 +99,14 @@ hlogit_prop_fit <- hlogit_prop_mod$sample(
   sig_figs = 5,
   parallel_chains = 6,
   chains = 6,
-  iter_warmup = 2000,
+  iter_warmup = 4000,
   iter_sampling = 2000,
   max_treedepth = 11
 )
+
+# Write the model object to an RDS file
+hlogit_prop_fit$save_object(file = str_c(fits_dir, "Design_Stage_HLogit_1.rds"))
+
+# Leave One Out Cross Validation
+hlogit_prop_fit_loo <- hlogit_prop_fit$loo(cores = 4L)
+

@@ -17,44 +17,44 @@ transformed data {
   
   // Calculate the standard deviation of each column in X
   for (k in 1:K) {
-    X_sigma[k] = 1/sd(X[, k]);
+    X_sigma[k] = sd(X[, k]);
   }
 }
 
 parameters {
   real alpha; // Population-Level Intercept
   vector[K] beta; // Regression Coefficients
-  real<lower = 0> sigma; // Country-Level Standard Deviations
-  vector[J] z; // Standardized Country-Level Effects
+  real<lower = 0> sigma_upsilon; // Country-Level Standard Deviations
+  vector[J] z_upsilon; // Standardized Country-Level Effects
 }
 
 transformed parameters {
-  vector[J] upsilon; // Actual Country-Level Effects
-  upsilon = sigma * z;
+  vector[J] upsilon = sigma_upsilon * z_upsilon; // Actual Country-Level Effects
+  vector[N] mu; // Linear Predictor
+  mu = alpha + upsilon[jj] .* Z_J;
 }
 
 model {
   // Priors for Model Parameters
-  beta ~ normal(X_mu, X_sigma); // Priors for the coefficients
-  sigma ~ exponential(0.5); // Prior for the country SDs
-  z ~ std_normal(); // Prior for the standardized country effects
-  alpha ~ student_t(4, 0, 1); // Prior on the population-level intercept
+  target += exponential_lpdf(sigma_upsilon | 1); // Prior for the country SDs
+  target += normal_lpdf(z_upsilon | 0, 1); // Prior for the standardized country effects
+  target += normal_lpdf(alpha | 0, 3); // Prior on the population-level intercept
+  target += normal_lpdf(beta | X_mu, X_sigma); // Priors for the coefficients
   
   // Bernoulli Likelihood
-  target += bernoulli_logit_glm_lpmf(Y | X, alpha + upsilon[jj], beta);
+  target += bernoulli_logit_glm_lpmf(Y | X, mu, beta);
 }
 
 generated quantities {
   vector[N] log_lik; // Pointwise Log Likelihood
+  vector[N] treat_preds; // Observation-Level Expectations
   
-  // Group Level Expectations
-  real preds_groups[N] = bernoulli_logit_rng(alpha + upsilon[jj]);
+  for(n in 1:N) {
+    treat_preds[n] = bernoulli_logit_rng(mu[n] + X[n] * beta);
+  }
   
-  // Observation-Level Expectations
-  real preds_obs[N] = bernoulli_logit_rng(alpha + upsilon[jj] + X * beta);
-
   // Calculate the Pointwise Log Likelihood
   for (n in 1:N) {
-    log_lik[n] = bernoulli_logit_lpmf(Y[n] | alpha + upsilon[jj[n]] + X[n] * beta);
+    log_lik[n] = bernoulli_logit_lpmf(Y[n] | alpha + X[n] * beta);
   }
 }
