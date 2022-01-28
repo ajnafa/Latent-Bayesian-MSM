@@ -48,7 +48,7 @@ generated quantities {
   vector[N] log_lik; // Pointwise Log Likelihood
   
   // Group Level Expectations
-  real preds_groups[J] = bernoulli_logit_rng(alpha + upsilon[jj]);
+  real preds_groups[N] = bernoulli_logit_rng(alpha + upsilon[jj]);
   
   // Observation-Level Expectations
   real preds_obs[N] = bernoulli_logit_rng(alpha + upsilon[jj] + X * beta);
