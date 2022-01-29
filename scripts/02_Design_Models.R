@@ -14,7 +14,7 @@ pacman::p_load(
   "tidyverse",
   "data.table",
   "dtplyr",
-  "cmdstanr",
+  "brms",
   "tidybayes"
 )
 
@@ -40,74 +40,103 @@ glimpse(sim_data_ls$data)
 # Get the true values for the treatment
 (true_treat <- sim_data_ls$true_treat)
 # intercept   beta     gamma     delta 
-#  1.19472   3.60030  -0.07034  -0.09988 
+# 0.59736   1.80015  -0.03517  -0.04994 
 
 # Get the true values for the treatment
 (true_resp <- sim_data_ls$true_resp)
+# intercept     treat      beta     gamma     delta 
+#  12.359       6.856     3.188    -2.449     5.406 
 
 # Check distribution of the treatment
-xtabs(~ country + post_treat, sim_data_ls$data)
+xtabs(~ country + treat_bin_conf, sim_data_ls$data)
 
 # Extract the data
-sim_data_df <- sim_data_ls$data %>%
+sim_data_df <- sim_data$data %>%
   # Group the data by country
   group_by(country) %>%
-  # Centering the predictors
-  mutate(across(
-    c(time, beta:delta),
-    list(
-      wi = ~ (.x - mean(.x))/(2*sd(.x)),
-      be = ~ mean(.x)
-    )
-  )) %>% 
+  # Centering and scaling the predictors
+  mutate(
+    across(
+      c(time, beta:delta),
+      list(
+        wi = ~ (.x - mean(.x))/(2*sd(.x)),
+        be = ~ mean(.x)
+        )
+      )) %>% 
   # Ungroup the data
-  ungroup()
+  ungroup() %>% 
+  # Centering the scaling group-level predictors
+  mutate(
+    across(
+      ends_with("_be"),
+      ~ (.x - mean(.x))/(2*sd(.x))
+      ),
+    # Declare country as a factor
+    country = as_factor(country)
+    )
 
 #------------------------------------------------------------------------------#
 #------------------------Estimate the Design Stage Model------------------------
 #------------------------------------------------------------------------------#
 
-# Prepare the data for use with Stan
-hlogit_stan_data <- list(
-  N = nrow(sim_data_df),
-  K = 4,
-  Y = sim_data_df$post_treat,
-  X = select(sim_data_df, ends_with("wi")),
-  J = max(sim_data_df$country),
-  jj = sim_data_df$country
+# Specify the formula for the propensity model
+bf_hlogit_prop_mod_re <- bf(
+  treat_bin_conf ~ beta_wi + beta_be + gamma_wi + gamma_be + delta_wi + 
+    delta_be + (1 | time) + (1 | country),
+  center = FALSE,
+  family = bernoulli(link = "logit")
 )
 
-# Load the Stan Model File
-hlogit_prop <- str_c(stan_dir, "Design_Stage_HLogit_1.stan")
+# Priors for the model parameters
+prop_priors <- prior(normal(0, 1), class = "b") +
+  prior(student_t(4, 0, 1), class = "b", coef = "Intercept") +
+  prior(exponential(0.8), class = "sd")
 
-# Compile the Stan model
-hlogit_prop_mod <- cmdstan_model(
-  hlogit_prop, 
-  dir = fits_dir,
-  force_recompile = TRUE
+# Fit the model using brms----
+hlogit_prop_re_fit <- brm(
+  bf_hlogit_prop_mod_re,
+  data = sim_data_df,
+  prior = prop_priors,
+  chains = 6, 
+  cores = 6L,
+  iter = 8000,
+  seed = 12345, 
+  backend = "cmdstanr",
+  save_pars = save_pars(all = TRUE),
+  refresh = 100,
+  save_model = "Design_Stage_HLogit",
+  file = str_c(fits_dir, "Design_Stage_HLogit"),
+  str_c(stan_dir, "Design_Stage_HLogit.stan")
 )
 
-# Print the model code
-str_split(hlogit_prop_mod$code(), pattern = ";", simplify = T)
-
-# Fit the Design-Stage Model; Run Time is 36.0 seconds
-hlogit_prop_fit <- hlogit_prop_mod$sample(
-  data = hlogit_stan_data,
-  seed = 123456,
-  refresh = 50,
-  output_dir = fits_dir,
-  sig_figs = 5,
-  parallel_chains = 6,
-  chains = 6,
-  iter_warmup = 4000,
-  iter_sampling = 2000,
-  max_treedepth = 11
+# Add LOO and Bayes R2 to the Model for the Full Data
+hlogit_prop_re_fit <- add_criterion(
+  hlogit_prop_re_fit,
+  criterion = c("loo", "loo_R2"),
+  cores = 4,
+  seed = 666
 )
 
-# Write the model object to an RDS file
-#hlogit_prop_fit$save_object(file = str_c(fits_dir, "Design_Stage_HLogit_1.rds"))
-hlogit_prop_fit <- read_rds(str_c(fits_dir, "Design_Stage_HLogit_1.rds"))
+# Generate posterior expectations for each observation
+pred_probs_chains <- posterior_epred(hlogit_prop_re_fit)
 
-# Leave One Out Cross Validation
-#hlogit_prop_fit_loo <- hlogit_prop_fit$loo(cores = 4L)
-#write_rds(hlogit_prop_fit_loo, str_c(fits_dir, "Design_Stage_HLogit_1_LOO.rds"))
+# Rows are posterior draws, columns are original rows in dataset
+dim(pred_probs_chains) # 24000 x 3060 matrix
+
+# Transpose the matrix so that columns are posterior draws
+ipw_matrix <- t(pred_probs_chains) %>%
+  # Coerce the matrix to a tibble for manipulation
+  as_tibble(.name_repair = "universal") %>% 
+  # Add the treatment column for calculating inverse probability weights
+  mutate(treat_bin_conf = sim_data_df$treat_bin_conf) %>% 
+  # Calculate the inverse probability weights
+  mutate(across(
+    starts_with("..."),
+    ~ (treat_bin_conf / .x) + ((1 - treat_bin_conf) / (1 - .x))
+  )) %>% 
+  # Get rid of treatment column
+  select(-treat_bin_conf)
+
+# Write the weights to a file
+write_rds(ipw_matrix, "data/ipw_weights_full.rds")
+
