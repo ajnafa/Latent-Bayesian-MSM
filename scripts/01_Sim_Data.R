@@ -187,7 +187,7 @@ sim_AR1_xts <- function(J, T, resp_coefs = NULL,
       y_treated_conf = resp_coef_vals["intercept"] + (resp_coef_vals["beta"] * beta) +
         (resp_coef_vals["gamma"] * gamma) + (resp_coef_vals["delta"] * delta) +
         (resp_coef_vals["treat"] * treat_bin_conf) + rnorm(n(), 0, 1),
-      # Confounded Response and Unconfounded Treatment
+      # Confounded Response and Confounded Treatment
       y_conf_treated_conf = resp_coef_vals["intercept"] + (resp_coef_vals["beta"] * beta) +
         (resp_coef_vals["gamma"] * gamma) + (resp_coef_vals["delta"] * delta) +
         (resp_coef_vals["treat"] * treat_bin_conf) + rnorm(n(), 0, 1) + Conf

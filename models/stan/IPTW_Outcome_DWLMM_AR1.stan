@@ -1,13 +1,13 @@
-/* Bayesian Single-Weighted Latent Inverse Probability Estimator with a 
-* Gaussian Likelihood, Country Random Effects, and AR(1) errors
+/* Bayesian Double-Weighted Latent Inverse Probability of Treatment Estimator
+* with a Gaussian Likelihood, Country Random Effects, and AR(1) errors
 * Author: A. Jordan Nafa; Stan Version 2.28.2; Last Revised 1-29-2022 */
 functions {
   // Weighted Log PDF of the Gaussian Pseudo-Likelihood
-  real normal_ipw_lpdf(vector y, vector mu, real sigma, vector w_tilde, int N) {
+  real normal_ipw_lpdf(vector y, vector mu, real sigma, vector wts, int N) {
     real weighted_term;
     weighted_term = 0.00;
     for (n in 1:N) {
-      weighted_term = weighted_term + w_tilde[n] * (normal_lpdf(y[n] | mu[n], sigma));
+      weighted_term = weighted_term + wts[n] * (normal_lpdf(y[n] | mu[n], sigma));
     }
     return weighted_term;
   }
@@ -27,6 +27,8 @@ data {
   // Data from the Design Stage Model
   vector[N] ipw_mu; // Mean of the Population-Level IP Weights
   vector[N] ipw_sigma; // Scale of the Population-Level IP Weights
+  vector[J] ipw_mu_upsilon; // Mean of the Country-Level IP Weights
+  vector[J] ipw_sigma_upsilon; // Scale of the Country-Level IP Weights
   
   // Data for the ARMA Correlations
   int<lower = 0> K_AR;  // AR Order
@@ -41,6 +43,7 @@ transformed data {
   
   int max_lag = max(K_AR, K_MA);
   vector[N] Z_J = ones_vector(N); // Data for the Country level Intercepts
+  vector[J] zeros_J = zeros_vector(J); // Vector for reweighting the Country REs
   
   // Centering the Design Matrix
   for (i in 2:K) {
@@ -53,7 +56,8 @@ parameters {
   vector[Kc] beta; // Population-Level Effects
   real alpha; // Population-Level Intercept for the Centered Predictors
   real<lower=0> sigma;  // Dispersion Parameter
-  vector<lower=0>[N] weights_z; // Standardized Latent IP Weights
+  vector<lower=0>[N] weights_z; // Standardized Latent Population IP Weights
+  vector<lower=0>[J] weights_u; // Standardized Latent Country IP Weights
   vector[K_AR] ar;  // Autoregressive Coefficients
   real<lower = 0> sigma_upsilon; // Country-Level Standard Deviations
   vector[J] z_upsilon; // Standardized Country-Level Effects
@@ -61,10 +65,13 @@ parameters {
 
 transformed parameters {
   vector[J] upsilon = sigma_upsilon * z_upsilon; // Actual Country-Level Effects
-  vector[N] w_tilde; // Latent IPT Weights
+  vector[N] w_tilde; // Latent IPT Weights for the Population-Level
+  vector[J] w_upsilon; // Latent IPT Weights for the Country-Level
   
-  // Compute the Latent IPW Weights
+  // Compute the Latent IPW Weights for the Population-Level
   w_tilde = ipw_mu + ipw_sigma .* weights_z;
+  // Compute the Latent IPW Weights for the Country-Level
+  w_upsilon = ipw_mu_upsilon + ipw_sigma_upsilon .* weights_u
 }
 
 model {
@@ -73,7 +80,8 @@ model {
   vector[N] err;  // Actual Residuals
   
   // Initialize the Linear Predictor
-  vector[N] mu = alpha + Xc * beta; 
+  vector[N] mu = alpha + Xc * beta;
+  
   profile ("Linear Predictor") {
     for (n in 1:N) {
       // Add Terms to the linear predictor
@@ -96,18 +104,23 @@ model {
   }
   // Sampling the Weights
   target += exponential_lpdf(weights_z | 1);
+  target += exponential_lpdf(weights_u | 1);
   
   // Priors for the Model Parameters
-  target += normal_lpdf(alpha | 54, 131);
-  target += normal_lpdf(beta[1] | 0, 4);
-  target += normal_lpdf(beta[2] | 0, 15);
-  target += normal_lpdf(beta[3] | 0, 8);
-  target += normal_lpdf(beta[4] | 0, 15);
+  target += normal_lpdf(alpha | 52.09, 131.79441);
+  target += normal_lpdf(beta[1] | 0, 4.11893);
+  target += normal_lpdf(beta[2] | 0, 14.85291);
+  target += normal_lpdf(beta[3] | 0, 8.34525);
+  target += normal_lpdf(beta[4] | 0, 14.70615);
   target += normal_lpdf(ar | 0, 0.5) 
   - 1 * log_diff_exp(normal_lcdf(1 | 0, 0.5), normal_lcdf(-1 | 0, 0.5));
-  target += exponential_lpdf(sigma_upsilon | 0.015);
+  target += exponential_lpdf(sigma_upsilon | 0.01518);
   target += normal_lpdf(z_upsilon | 0, 1);
-  target += exponential_lpdf(sigma | 0.015);
+  target += exponential_lpdf(sigma | 0.01518);
+  //
+  profile ("Weighting REs") {
+    upsilon ~ normal_ipw_lpdf(zeros_J, sigma_upsilon, w_upsilon, J);
+  }
 }
 
 generated quantities {

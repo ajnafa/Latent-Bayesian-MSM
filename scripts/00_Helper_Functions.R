@@ -93,7 +93,7 @@ prior_scaling <- function(y, df, ...) {
   scales[1, ] <- c(y_mean, y_sd*2)
   
   # Priors for the random effects SDs
-  scales[(dim(df)[2]+1), 2] <- 1/y_sd
+  scales[(dim(df)[2] + 1), 2] <- 1/y_sd
   
   # Retrieve the prior scales for the coefficients
   for (i in 2:dim(df)[2]) {
