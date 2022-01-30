@@ -15,7 +15,8 @@ pacman::p_load(
   "data.table",
   "dtplyr",
   "brms",
-  "tidybayes"
+  "tidybayes",
+  "latex2exp"
 )
 
 # Load the helper functions
@@ -176,14 +177,14 @@ observed_pops <- ggplot() +
   # Add a density slab for the observed probability of treated units
   stat_slab(
     data = filter(ipw_matrix, treat_bin_conf == 1), 
-    aes(x = mu_prob, slab_alpha = stat(pdf*2)),
+    aes(x = mu_prob, slab_alpha = stat(2*pdf)),
     fill = "#389078",
     side = "top"
     ) +
   # Add a density slab for the observed probability of untreated units
   stat_slab(
     data = filter(ipw_matrix, treat_bin_conf == 0), 
-    aes(x = mu_prob, slab_alpha = stat(pdf*2)),
+    aes(x = mu_prob, slab_alpha = stat(2*pdf)),
     fill = "#B82820",
     side = "bottom"
   ) +

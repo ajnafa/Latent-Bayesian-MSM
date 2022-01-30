@@ -81,3 +81,28 @@ stan_metadata <- function(x, ...){
   # Return the metadata field
   return(meta_data)
 }
+
+# A function for recovering the prior scales based on rstanarm's approach
+prior_scaling <- function(y, df, ...) {
+  # Initialize a matrix to store the location and scale values in
+  scales <- matrix(NA, nrow = dim(df)[2] + 1, ncol = 2)
+  y_mean <- mean(y, na.rm = TRUE) # Recover the mean of the response
+  y_sd <- sd(y, na.rm = TRUE) # Recover the sd of the response
+  
+  # Priors for the Population-Level Intercept
+  scales[1, ] <- c(y_mean, y_sd*2)
+  
+  # Priors for the random effects SDs
+  scales[(dim(df)[2]+1), 2] <- 1/y_sd
+  
+  # Retrieve the prior scales for the coefficients
+  for (i in 2:dim(df)[2]) {
+    scales[i, ] <- c(0.00, if_else(
+      diff(range(df[, i])) > 1,
+      (y_sd/sd(df[, i], na.rm = TRUE))*2,
+      (1/sd(df[, i]))*2,
+    ))
+  }
+  # Return the matrix object
+  return(scales)
+}
