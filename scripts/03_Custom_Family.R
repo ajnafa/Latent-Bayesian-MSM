@@ -90,8 +90,7 @@ gaussian_ipw <- custom_family(
 
 # Naive outcome Model, confounded response and unconfounded treatment
 ipw_outcome_model_a <- bf(
-  y_treated_conf ~ treat_bin_conf + beta + gamma + delta + 
-    (1 | country) + ar(time = time, gr = country, p = 1),
+  y_treated_conf ~ treat_bin_conf + beta + gamma + delta + (1 | country),
   family = gaussian_ipw
 )
 
@@ -102,7 +101,6 @@ outcome_priors_a <- prior(normal(52.09, 131.79441), class = "Intercept") +
   prior(normal(0, 8.34525), class = "b", coef = "gamma") +
   prior(normal(0, 14.70615), class = "b", coef = "delta") +
   prior(exponential(0.01518), class = "sd") +
-  prior(normal(0, 0.5), class = "ar") +
   prior("target += exponential_lpdf(weights_z | 1);", check = FALSE)
 
 # Test the model using brms----
@@ -119,5 +117,5 @@ ipwt_outcome_fit_a <- brm(
   save_pars = save_pars(all = TRUE),
   control = list(adapt_delta = 0.9),
   refresh = 100,
-  file = str_c(fits_dir, "IPWT_Gassian_AR"),
+  file = str_c(fits_dir, "IPWT_Gassian_AR2"),
 )
