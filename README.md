@@ -3,7 +3,7 @@
 
 # Taking Uncertainty Seriously: Bayesian Marginal Structural Models for Causal Inference in Political Science
 
-### A. Jordan Nafa and Andrew Heiss
+### Andrew Heiss and A. Jordan Nafa
 
 <!-- badges: start -->
 <!-- badges: end -->
@@ -14,7 +14,7 @@
 > in developing approaches to causal inference in situations where true
 > experimental manipulation is either impractical or impossible. With
 > few exceptions, however, commonly employed techniques in political
-> science have developed largely within the frequentist framework (i.e.,
+> science have developed largely within a frequentist framework (i.e.,
 > Blackwell and Glynn 2018; Imai and Kim 2019; Torres 2020). In this
 > article, we argue that common approaches rest fundamentally upon
 > assumptions that are difficult to defend in many areas of political
@@ -23,12 +23,11 @@
 > Schrodt 2014; Western and Jackman 1994). Extending the approach to
 > causal inference for cross-sectional time series and panel data under
 > selection on observables introduced by Blackwell and Glynn (2018), we
-> develop a two-step Bayesian approach to the estimation of marginal
+> develop a two-step pseudo-Bayesian method for estimating marginal
 > structural models. We demonstrate our proposed procedure in the
-> context of parametric survival analysis and linear mixed effects
-> models via a simulation study and two empirical examples. Finally, we
-> provide flexible open-source software implementing the proposed
-> method.
+> context linear mixed effects models via a simulation study and two
+> empirical examples. Finally, we provide flexible open-source software
+> implementing the proposed method.
 
 ## Licenses
 
@@ -78,24 +77,27 @@ Robert Franzese. London, UK: SAGE, 961–84.
 
 <div id="ref-Imai2019" class="csl-entry">
 
-Imai, Kosuke, and In Song Kim. 2019. “When Should We Use Unit Fixed
-Effects Regression Models for Causal Inference with Longitudinal Data?”
-*American Journal of Political Science* 63(2): 467–90.
+Imai, Kosuke, and In Song Kim. 2019. “[When Should We Use Unit Fixed
+Effects Regression Models for Causal Inference with Longitudinal
+Data?](https://doi.org/10.1111/ajps.12417)” *American Journal of
+Political Science* 63(2): 467–90.
 
 </div>
 
 <div id="ref-Schrodt2014" class="csl-entry">
 
-Schrodt, Philip A. 2014. “Seven Deadly Sins of Contemporary Quantitative
-Political Analysis.” *Journal of Peace Research* 51: 287–300.
+Schrodt, Philip A. 2014. “[Seven Deadly Sins of Contemporary
+Quantitative Political
+Analysis](https://doi.org/10.1177/0022343313499597).” *Journal of Peace
+Research* 51: 287–300.
 
 </div>
 
 <div id="ref-Torres2020" class="csl-entry">
 
-Torres, Michelle. 2020. “Estimating Controlled Direct Effects Through
-Marginal Structural Models.” *Political Science Research and Methods*
-8(3): 391–408.
+Torres, Michelle. 2020. “[Estimating Controlled Direct Effects Through
+Marginal Structural Models](https://doi.org/10.1017/psrm.2020.3).”
+*Political Science Research and Methods* 8(3): 391–408.
 
 </div>
 

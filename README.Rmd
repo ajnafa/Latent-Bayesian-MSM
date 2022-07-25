@@ -18,14 +18,14 @@ knitr::opts_chunk$set(
 
 # Taking Uncertainty Seriously: Bayesian Marginal Structural Models for Causal Inference in Political Science
 
-### A. Jordan Nafa and Andrew Heiss
+### Andrew Heiss and A. Jordan Nafa
 
 <!-- badges: start -->
 <!-- badges: end -->
 
 ### Abstract
 
-> The past two decades have been characterized by considerable progress in developing approaches to causal inference in situations where true experimental manipulation is either impractical or impossible. With few exceptions, however, commonly employed techniques in political science have developed largely within the frequentist framework [i.e., @Blackwell2018; @Imai2019; @Torres2020]. In this article, we argue that common approaches rest fundamentally upon assumptions that are difficult to defend in many areas of political research and highlight the benefits of quantifying uncertainty in the estimation of causal effects [@Gill1999; @Gill2020; @Schrodt2014; @Western1994]. Extending the approach to causal inference for cross-sectional time series and panel data under selection on observables introduced by @Blackwell2018, we develop a two-step Bayesian approach to the estimation of marginal structural models. We demonstrate our proposed procedure in the context of parametric survival analysis and linear mixed effects models via a simulation study and two empirical examples. Finally, we provide flexible open-source software implementing the proposed method.
+> The past two decades have been characterized by considerable progress in developing approaches to causal inference in situations where true experimental manipulation is either impractical or impossible. With few exceptions, however, commonly employed techniques in political science have developed largely within a frequentist framework [i.e., @Blackwell2018; @Imai2019; @Torres2020]. In this article, we argue that common approaches rest fundamentally upon assumptions that are difficult to defend in many areas of political research and highlight the benefits of quantifying uncertainty in the estimation of causal effects [@Gill1999; @Gill2020; @Schrodt2014; @Western1994]. Extending the approach to causal inference for cross-sectional time series and panel data under selection on observables introduced by @Blackwell2018, we develop a two-step pseudo-Bayesian method for estimating marginal structural models. We demonstrate our proposed procedure in the context linear mixed effects models via a simulation study and two empirical examples. Finally, we provide flexible open-source software implementing the proposed method.
 
 
 ## Licenses
