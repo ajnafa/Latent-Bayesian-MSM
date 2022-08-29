@@ -8,14 +8,14 @@ sim_ardl_bayes <- function(sim.data, ...) {
   )
   
   # Priors for the model
-  bayes_adl_priors <- prior(normal(0, 1), class = "b") +
+  bayes_adl_priors <- prior(normal(0, 1.5), class = "b") +
     prior(normal(mean(Y), 1.5*sd(Y)), class = "Intercept") +
     prior(exponential(1/sd(Y)), class = "sigma")
   
   # ARDL (t-1) using brms
   ardl_bayes <- brm(
     formula = bayes_adl_form,
-    data = x,
+    data = sim.data,
     prior = bayes_adl_priors,
     chains = 4, 
     cores = 4L,
@@ -48,8 +48,11 @@ bayes_ipwt <- function(sim.data, psnum, psdenom) {
   # Calculate the denominator of the stabilized weights
   denom_scores <- preds_denom * sim.data$X + (1 - preds_denom) * (1 - sim.data$X)
   
+  # Calculate the weights
+  wts <- num_scores/denom_scores
+  
   ## Coerce the output to a tibble
-  weights <- tibble::as_tibble(num_scores/denom_scores, .name_repair = "minimal")
+  weights <- tibble::as_tibble(wts, .name_repair = "minimal")
   
   ## Assign column names to each draw
   colnames(weights) <- paste("draw_", 1:ncol(weights), sep = "")
@@ -64,7 +67,7 @@ bayes_ipwt <- function(sim.data, psnum, psdenom) {
     ) |>
     ## Group the data by identifier
     dplyr::group_by(unit) |>
-    ## Calculate the cumulative product of the weights by country
+    ## Calculate the cumulative product of the weights by unit
     dplyr::mutate(dplyr::across(
       dplyr::starts_with("draw"),
       ~ cumprod(tidyr::replace_na(.x, 1)))
@@ -74,13 +77,18 @@ bayes_ipwt <- function(sim.data, psnum, psdenom) {
   
   # Generate the Lags
   sim.data[, `:=` (
+    wts_mean = rowMeans(wts),
+    wts_sd = apply(wts, 1, sd),
     cws_mean = rowMeans(weights[, 3:ncol(weights)]),
     cws_med = apply(weights[, 3:ncol(weights)], 1, median),
-    cws_sd = apply(weights[, 3:ncol(weights)], 1, sd)]
+    cws_sd = apply(weights[, 3:ncol(weights)], 1, sd),
+    num_prob = rowMeans(preds_num),
+    denom_prob = rowMeans(preds_denom))
+  ]
   
   # Return the data frame with the weights info
   return(sim.data)
-  }
+}
 
 # Function for the design stage of the MSM models----
 sim_msm_bayes_design <- function(sim.data, ...) {
@@ -103,11 +111,11 @@ sim_msm_bayes_design <- function(sim.data, ...) {
     chains = 4, 
     cores = 4L,
     iter = 6000,
-    seed = 12345, 
     backend = "cmdstanr",
     save_pars = save_pars(all = TRUE),
     control = list(adapt_delta = 0.9),
-    refresh = 0
+    refresh = 0,
+    ...
   )
   
   # Define the model formula for the design stage denominator
@@ -128,11 +136,11 @@ sim_msm_bayes_design <- function(sim.data, ...) {
     chains = 4, 
     cores = 4L,
     iter = 6000,
-    seed = 12345, 
     backend = "cmdstanr",
     save_pars = save_pars(all = TRUE),
     control = list(adapt_delta = 0.9),
-    refresh = 0
+    refresh = 0,
+    ...
   )
   
   # Calculating the stabilized weights
@@ -141,10 +149,13 @@ sim_msm_bayes_design <- function(sim.data, ...) {
     psnum =  ps_num_bayes, 
     psdenom = ps_denom_bayes
   )
+  
+  # Return the updated data
+  return(out)
 }
 
 # Function for the outcome stage of the MSM models----
-sim_msm_bayes_outcome <- function(sim.data, ...) {
+sim_msm_bayes_outcome <- function(sim.data, .seed, ...) {
   
   # Define the model formula for the design stage numerator
   bayes_msm_form <- bf(Y ~ X + X_Lag, family = gaussian())

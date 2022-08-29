@@ -16,13 +16,7 @@
 #'
 #' @export dgp_sim
 #'
-dgp_sim <- function(.groups, .periods, .true_gamma, .treat_conf, .seed, ...) { 
-  
-  # Requires data.table package
-  require(data.table)
-  
-  # Set the rng seed
-  set.seed(.seed)
+dgp_sim <- function(.groups, .periods, .true_gamma, .treat_conf, ...) { 
   
   # Define the fixed parameter values
   mu = c(0, -0.1, -0.1) # Effect of X[t-1], X[t], and X[t] * X[t-1] on Y[t]
@@ -52,7 +46,7 @@ dgp_sim <- function(.groups, .periods, .true_gamma, .treat_conf, .seed, ...) {
   } 
   
   # Prob of X[t[1]] = 1 without time-invariant confounding
-  else {
+  else if (isFALSE(.treat_conf)) {
     X_prob = plogis(alpha_t0[1] + alpha_t0[2] * Z)
     X[, 1] = rbinom(.groups, 1, prob = X_prob)
   }
