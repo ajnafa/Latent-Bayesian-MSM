@@ -19,8 +19,18 @@ data {
   matrix[N, K] X; // Design Matrix for the Population-Level Effects
   
   // Statistics from the Design Stage Model
-  vector[N] ipw_mu; // Mean of the Population-Level Weights
-  vector[N] ipw_sigma; // Scale of the Population-Level Weights
+  vector<lower = 0>[N] ipw_mu; // Mean of the Population-Level Weights
+  vector<lower = 0>[N] ipw_sigma; // Scale of the Population-Level Weights
+  
+  // Prior on the scale of the weights
+  real<lower = 0> sd_prior_shape1;
+  real<lower = 0> sd_prior_shape2;
+  
+  // Prior on the coefficients and intercept
+  real<lower = 0> b_prior_sigma;
+  real alpha_prior_mu;
+  real<lower = 0> alpha_prior_sigma;
+  real<lower = 0> sigma_prior;
 }
 
 transformed data {
@@ -39,29 +49,29 @@ parameters {
   vector[Kc] b; // Population-Level Effects
   real Intercept; // Population-Level Intercept for the Centered Predictors
   real<lower=0> sigma;  // Dispersion Parameter
-  vector<lower=0>[N] weights_z; // Parameter for the IPT Weights
+  real<lower=0, upper=1> weights_z[N]; // Parameter for the IPT Weights
 }
 
 transformed parameters {
   // Compute the IPT Weights
   vector[N] w_tilde; // IPT Weights
-  w_tilde = ipw_mu + ipw_sigma .* weights_z;
+  w_tilde = ipw_mu + ipw_sigma * weights_z[1];
 }
 
 model {
   // Initialize the Linear Predictor
   vector[N] mu = Intercept + Xc * b;
   
-    // Sampling the Weights
-  target += exponential_lpdf(weights_z | 1);
+  // Sampling the Weights
+  target += beta_lpdf(weights_z | sd_prior_shape1, sd_prior_shape2);
+  
+  // Priors for the Model Parameters
+  target += normal_lpdf(Intercept | alpha_prior_mu, alpha_prior_sigma);
+  target += normal_lpdf(b | 0, b_prior_sigma);
+  target += exponential_lpdf(sigma | sigma_prior);
   
   // Weighted Likelihood
   target += normal_ipw_lpdf(Y | mu, sigma, w_tilde, N);
-  
-  // Priors for the Model Parameters
-  target += normal_lpdf(Intercept | mean(Y), 1.5*sd(Y));
-  target += normal_lpdf(b | 0, 2.5);
-  target += exponential_lpdf(sigma | 1);
 }
 
 generated quantities {

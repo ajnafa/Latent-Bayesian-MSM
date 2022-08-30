@@ -92,53 +92,37 @@ bayes_ipwt <- function(sim.data, psnum, psdenom) {
 
 # Function for the design stage of the MSM models----
 sim_msm_bayes_design <- function(sim.data, ...) {
-  
-  # Define the model formula for the design stage numerator
-  bayes_num_form <- bf(
-    X ~ X_Lag,
-    family = brmsfamily(family = "bernoulli", link = "logit")
-  )
-  
-  # Priors for the design stage model numerator
-  bayes_num_priors <- prior(normal(0, 1), class = "b") +
-    prior(normal(0, 2), class = "Intercept")
-  
+
   # Design stage model numerator
   ps_num_bayes <- brm(
-    formula = bayes_num_form,
+    formula = bf(X ~ X_Lag),
     data = sim.data,
-    prior = bayes_num_priors,
+    family = bernoulli(link = "logit"),
+    prior = prior(normal(0, 1), class = "b") +
+      prior(normal(0, 2), class = "Intercept"),
     chains = 4, 
     cores = 4L,
-    iter = 6000,
+    iter = 4000,
     backend = "cmdstanr",
     save_pars = save_pars(all = TRUE),
-    control = list(adapt_delta = 0.9),
+    control = list(adapt_delta = 0.9, max_treedepth = 12),
     refresh = 0,
     ...
   )
   
-  # Define the model formula for the design stage denominator
-  bayes_denom_form <- bf(
-    X ~ Y_Lag + Z + X_Lag,
-    family = brmsfamily(family = "bernoulli", link = "logit")
-  )
-  
-  # Priors for the design stage model denominator
-  bayes_denom_priors <- prior(normal(0, 1), class = "b") +
-    prior(normal(0, 2), class = "Intercept")
-  
   # Design stage model denominator
   ps_denom_bayes <- brm(
-    formula = bayes_denom_form,
+    formula = bf(X ~ Y_Lag + Z + X_Lag),
     data = sim.data,
-    prior = bayes_denom_priors,
+    family = bernoulli(link = "logit"),
+    prior = prior(normal(0, 1), class = "b") +
+      prior(normal(0, 2), class = "Intercept"),
     chains = 4, 
     cores = 4L,
-    iter = 6000,
+    iter = 4000,
     backend = "cmdstanr",
     save_pars = save_pars(all = TRUE),
-    control = list(adapt_delta = 0.9),
+    control = list(adapt_delta = 0.9, max_treedepth = 12),
     refresh = 0,
     ...
   )
@@ -155,13 +139,14 @@ sim_msm_bayes_design <- function(sim.data, ...) {
 }
 
 # Function for the outcome stage of the MSM models----
-sim_msm_bayes_outcome <- function(sim.data, .seed, ...) {
-  
-  # Define the model formula for the design stage numerator
-  bayes_msm_form <- bf(Y ~ X + X_Lag, family = gaussian())
-  
+sim_msm_bayes_outcome <- function(sim.data, stan_model, ...) {
+
   # Take advantage of brms functionality because I'm lazy
-  msm_data <- make_standata(bayes_msm_form, data = sim.data)
+  msm_data <- make_standata(
+    Y ~ X + X_Lag, 
+    family = gaussian(), 
+    data = sim.data
+    )
   
   # Prepare the data for use with Stan
   msm_data <- list(
@@ -170,31 +155,35 @@ sim_msm_bayes_outcome <- function(sim.data, .seed, ...) {
     Y = msm_data$Y,
     X = msm_data$X,
     ipw_mu = sim.data$cws_mean,
-    ipw_sigma = sim.data$cws_sd
+    ipw_sigma = sim.data$cws_sd,
+    sd_prior_shape1 = 2,
+    sd_prior_shape2 = 8,
+    sigma_prior = (1/sd(msm_data$Y)),
+    b_prior_sigma = (1.5 * (sd(msm_data$Y)/sd(msm_data$X[, 2]))),
+    alpha_prior_mu = mean(msm_data$Y),
+    alpha_prior_sigma = (2 * sd(msm_data$Y))
   )
   
-  # Compile the Stan model
-  msm_sim_mod <- cmdstan_model(
-    "models/stan/IPTW_Outcome_Simulation.stan",
-    force_recompile = TRUE
-  )
-  
-  # Fit the Outcome-Stage Model; Run time is approximately 10 minutes
+  # Fit the Outcome-Stage Model
   msm_sim_fit <- msm_sim_mod$sample(
     data = msm_data,
-    seed = 123456,
     refresh = 0,
     sig_figs = 5,
+    thin = 2,
     parallel_chains = 4,
     chains = 4,
-    iter_warmup = 4000,
-    iter_sampling = 4000,
+    iter_warmup = 2000,
+    iter_sampling = 2000,
     max_treedepth = 12,
-    adapt_delta = 0.9
+    adapt_delta = 0.9,
+    show_messages = FALSE
   )
   
   # Calculate a summary of the draws
-  msm_result <- summarise_draws(msm_sim_fit, .cores = 6L)
+  msm_result <- posterior::as_draws_rvars(
+    msm_sim_fit$draws(
+      variables = c("lp__", "b_Intercept", "b", "sigma", "w_tilde")
+      ))
   
   # Return the update data frame
   return(msm_result)
