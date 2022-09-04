@@ -25,16 +25,16 @@ data {
   // Prior on the scale of the weights
   real<lower = 0> sd_prior_shape1;
   real<lower = 0> sd_prior_shape2;
-  
-  // Prior on the coefficients and intercept
-  real<lower = 0> b_prior_sigma;
-  real alpha_prior_mu;
-  real<lower = 0> alpha_prior_sigma;
-  real<lower = 0> sigma_prior;
 }
 
 transformed data {
-  int Kc = K - 1;   
+  // Priors on the coefficients and intercept
+  real<lower = 0> b_prior_sd = 1.5 * (sd(Y)/sd(X[, 2]));
+  real alpha_prior_mu = mean(Y);
+  real<lower = 0> alpha_prior_sd = 2 * sd(Y);
+  real<lower = 0> sigma_prior = 1/sd(Y);
+  
+  int Kc = K - 1; 
   matrix[N, Kc] Xc;  // Centered version of X without an Intercept
   vector[Kc] means_X;  // Column Means of the Uncentered Design Matrix
   
@@ -63,11 +63,11 @@ model {
   vector[N] mu = Intercept + Xc * b;
   
   // Sampling the Weights
-  target += beta_lpdf(weights_z | sd_prior_shape1, sd_prior_shape2);
+  weights_z ~ beta(sd_prior_shape1, sd_prior_shape2);
   
   // Priors for the Model Parameters
-  target += normal_lpdf(Intercept | alpha_prior_mu, alpha_prior_sigma);
-  target += normal_lpdf(b | 0, b_prior_sigma);
+  target += normal_lpdf(Intercept | alpha_prior_mu, alpha_prior_sd);
+  target += normal_lpdf(b | 0, b_prior_sd);
   target += exponential_lpdf(sigma | sigma_prior);
   
   // Weighted Likelihood
