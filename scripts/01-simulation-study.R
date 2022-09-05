@@ -21,6 +21,8 @@ pacman::p_load(
   "bayesplot",
   "furrr",
   "ggblend",
+  "tidybayes",
+  "patchwork",
   install = FALSE
 )
 
@@ -238,7 +240,7 @@ bias_groups_plot <- ggplot(error_by_groups, aes(x = groups, y = value)) +
     fill = "Condition",
     shape = "Condition",
   ) +
-  theme_bw(base_family = "serif", base_size = 22) +
+  theme_bw(base_family = "serif", base_size = 30) +
   theme(legend.position = "top")
 
 # Calculate the loss function
@@ -267,7 +269,7 @@ bias_periods_plot <- ggplot(error_by_periods, aes(x = periods, y = value)) +
   ) * blend("multiply") +
   scale_fill_manual(values = c("#9400D3", "#00CD00")) +
   scale_shape_manual(values = c(22, 23)) +
-  scale_y_continuous(limits = c(0, 0.15)) +
+  scale_y_continuous(limits = c(0, 0.10)) +
   scale_x_continuous(breaks = c(20, 50)) +
   labs(
     y = latex2exp::TeX(r'($\sqrt{E(\hat{\theta} - \theta)^{2}}$)'),
@@ -275,31 +277,125 @@ bias_periods_plot <- ggplot(error_by_periods, aes(x = periods, y = value)) +
     fill = "Condition",
     shape = "Condition",
   ) +
-  theme_bw(base_family = "serif", base_size = 22) +
+  theme_bw(base_family = "serif", base_size = 30) +
   theme(legend.position = "top")
 
-# Calculate the loss function
-rmse_by_cond <- sim_results %>% 
-  # Group by dimensions
-  group_by(id, cond) %>% 
-  # Calculate the mean
-  summarise(rmse = sqrt(mean((X_Lag - truth)^2)))
+# Patch the two plots into one
+rmse_plots <- bias_periods_plot/bias_groups_plot +
+  plot_layout(guides = "collect") &
+  theme(
+    legend.position = "top",
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold")
+    )
 
-# Plot RMSE by number of groups
-bias_cond_plot <- ggplot(rmse_by_cond, aes(x = cond, y = rmse)) +
-  geom_point(
-    aes(fill = cond, shape = cond), 
-    size = 3,
-    position = "jitter"
+# Write the plot to a file
+ggsave(
+  "rmse_lagx_sim_results.jpeg",
+  plot = rmse_plots,
+  device = "jpeg",
+  path = "figures",
+  width = 16,
+  height = 16,
+  units = "in",
+  dpi = "retina",
+  type = "cairo"
+)
+
+# Data for plotting the distributions of the estimates
+param_results <- sim_results %>% 
+  # Pivot estimates to long form
+  pivot_longer(
+    cols = c(MSM_X_Lag:MSM_X, ARDL_X, ARDL_Estimate),
+    names_to = "param",
+    values_to = "estimate"
+  ) %>% 
+  # Make facet labels
+  mutate(
+    parameter = case_when(
+      param == "MSM_X_Lag" ~ latex2exp::TeX(r'(Distribution of MSM Estimates: $X_{it-1}$)', output = "character"),
+      param == "ARDL_Estimate" ~ latex2exp::TeX(r'(Distribution of ARDL Estimates: $X_{it-1}$)', output = "character"),
+      param == "MSM_X" ~ latex2exp::TeX(r'(Distribution of MSM Estimates: $X_{it}$)', output = "character"),
+      param == "ARDL_X" ~ latex2exp::TeX(r'(Distribution of ARDL Estimates: $X_{it}$)', output = "character")
+    ),
+    model = case_when(
+      str_detect(param, "MSM") ~ "MSM",
+      str_detect(param, "ARDL") ~ "ARDL",
+    ),
+    truth = case_when(
+      str_detect(param, "X_Lag|Estimate") ~ 0,
+      str_detect(param, "MSM_X|ARDL_X") ~ -0.1
+    )
+  )
+
+# Distribution of the means for the lag of x
+x_lag_estimates <- param_results %>% 
+  filter(truth == 0) %>% 
+  ggplot(., aes(x = estimate, y = cond)) +
+  facet_wrap(~ parameter, labeller = label_parsed) +
+  stat_slabinterval(
+    aes(slab_alpha = stat(pdf), fill = model, shape = model),
+    fill_type = "gradient",
+    point_interval = "mean_qi",
+    show.legend = FALSE
   ) +
-  scale_fill_manual(values = c("#9400D3", "#00CD00")) +
+  geom_vline(xintercept = 0, lty = "dashed") +
   scale_shape_manual(values = c(22, 23)) +
-  scale_y_continuous(limits = c(0, 0.15)) +
+  scale_fill_manual(values = palettetown::pokepal(2, 4)) +
   labs(
-    y = latex2exp::TeX(r'($\sqrt{E(\hat{\theta} - \theta)^{2}}$)'),
-    x = "",
-    fill = "Condition",
-    shape = "Condition",
+    y = "",
+    x = "Posterior Mean Estimates"
   ) +
-  theme_bw(base_family = "serif", base_size = 22) +
-  theme(legend.position = "top")
+  theme_bw(base_family = "serif", base_size = 30) +
+  theme(
+    legend.position = "top",
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold")
+  )
+
+# Distribution of the means for x
+x_contemp_estimates <- param_results %>% 
+  filter(truth == -0.1) %>% 
+  ggplot(., aes(x = estimate, y = cond)) +
+  facet_wrap(~ parameter, labeller = label_parsed) +
+  stat_slabinterval(
+    aes(slab_alpha = stat(pdf), fill = model, shape = model),
+    fill_type = "gradient",
+    point_interval = "mean_qi",
+    show.legend = FALSE
+  ) +
+  geom_vline(xintercept = -0.1, lty = "dashed") +
+  scale_fill_manual(values = palettetown::pokepal(2, 4)) +
+  scale_shape_manual(values = c(22, 23)) +
+  labs(
+    y = "",
+    x = "Posterior Mean Estimates"
+  ) +
+  theme_bw(base_family = "serif", base_size = 30) +
+  theme(
+    legend.position = "top",
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold")
+  )
+
+# Combine the two plots in to one
+dist_plots <- x_lag_estimates/x_contemp_estimates +
+  plot_layout(guides = "collect") &
+  theme(
+    legend.position = "top",
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold")
+  )
+
+# Write the plot to a file
+ggsave(
+  "sim_results_distributions.jpeg",
+  plot = dist_plots,
+  device = "jpeg",
+  path = "figures",
+  width = 16,
+  height = 16,
+  units = "in",
+  dpi = "retina",
+  type = "cairo"
+)
