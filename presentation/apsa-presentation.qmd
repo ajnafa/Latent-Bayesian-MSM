@@ -97,7 +97,7 @@ sim_results <- read_rds("../data/sim_results.rds")
 
     -   Recent works drawing on approaches developed in biostatistics outline a framework for estimating causal effects under the relatively weaker assumption of *sequential ignorability* [@Acharya2016; @Blackwell2018]
 
--   Our goal in this research note is to extend the approach to causal inference under selection on observables introduced by @Blackwell2018 to a Bayesian framework
+-   Our goal in this paper is to extend the approach to causal inference under selection on observables introduced by @Blackwell2018 to a Bayesian framework
 :::
 
 ## Marginal Structural Models
@@ -125,16 +125,15 @@ complex_coords <- list(
 
 ## Plotmath labels for the complex DAG
 complex_labels <- list(
-  X_L2 = "X[t-2]", Z_L2 = "Z[t-2]",
-  Y_L2 = "Y[t-2]", X_L1 = "X[t-1]", 
-  Z_L1 = "Z[t-1]", Y_L1 = "Y[t-1]",
-  X = "X[t]", Z = "Z[t]",
-  Y = "Y[t]", X_T1 = "X[t+1]", Z_T1 = "Z[t+1]"
+  X_L2 = "...", Z_L2 = "...",
+  Y_L2 = "Y[i*t-2]", X_L1 = "X[i*t-1]", 
+  Z_L1 = "Z[i*t-1]", Y_L1 = "Y[i*t-1]",
+  X = "X[i*t]", Z = "Z[i*t]",
+  Y = "Y[i*t]", X_T1 = "...", Z_T1 = "..."
 )
 
 ## Creating a More Complex DAG using ggdag syntax
 complex_dag <- dagify(
-  X_L2 ~ Z_L2,
   Y_L2 ~ X_L2 + Z_L2,
   X_L1 ~ X_L2 + Z_L1 + Y_L2,
   Y_L1 ~ X_L1 + X_L2 + Z_L1,
@@ -142,7 +141,7 @@ complex_dag <- dagify(
   X ~ X_L1 + Z + Y_L1,
   Y ~ X_L1 + Z + X,
   Z ~ Y_L1 + Z_L1,
-  X_T1 ~ X + Z_T1 + Y,
+  X_T1 ~ X + Y,
   Z_T1 ~ Z + Y,
   coords = complex_coords,
   labels = complex_labels
@@ -164,13 +163,7 @@ complex_dag_contemp <- complex_dag %>%
     # Color for the edges
     .edge_colour = case_when(
       name == "X" & to == "Y" ~ "#00FFFF",
-      name %in% c("X_L1", "Z") & to %in% c("Y", "X") ~ "#FF3030",
       TRUE ~ "white"
-    ),
-    .node_color = case_when(
-      name %in% c("X", "Y") ~ "#FF3030",
-      adjusted == "unadjusted" ~ "#EE00EE",
-      adjusted == "adjusted" ~ "#7FFF00"
     )
 )
 
@@ -180,6 +173,131 @@ period_labels <- tribble(
   0.5,  1.1,  "bolditalic('Time '*t - 2)",
   1.5,  1.1,  "bolditalic('Time '*t - 1)",
   2.5,  1.1,  "bolditalic('Time '*t)"
+)
+
+# Adjust the length of the edges
+complex_dag_contemp <- shorten_dag_arrows(
+  complex_dag_contemp, 
+  proportion = 0.06
+  )
+
+# Generate the DAG for the contemporaneous effect of X on Y
+ggplot(
+  data = complex_dag_contemp, 
+  aes(x = x, y = y, xend = xend, yend = yend)
+) +
+  # Add the graph edges
+  geom_dag_edges(
+    aes(
+      x = xstart, 
+      y = ystart,
+      edge_color = .edge_colour
+      ), 
+    edge_width = 1.5
+  ) +
+  # Add the graph nodes
+  geom_dag_node(alpha = 0) +
+  # Add the graph text
+  geom_dag_text(
+    aes(label = label),
+    parse = TRUE,
+    size = 11,
+    color = "white",
+    family = "serif",
+    show.legend = FALSE
+  ) +
+  # Apply theme settings
+  theme_dag(
+    base_size = 24,
+    base_family = "serif",
+    strip.background = element_blank(),
+    panel.background = element_rect(fill = "transparent", colour = NA),
+    plot.background = element_rect(fill = "transparent", colour = NA),
+    legend.background = element_rect(fill = "transparent", colour = NA),
+    legend.key = element_rect(fill = "transparent", colour = NA),
+    plot.title = element_text(color = "white"),
+    plot.subtitle = element_text(color = "white"),
+    plot.caption = element_text(color = "white", face = "italic"),
+    legend.title = element_text(color = "white", face = "bold"),
+    legend.text = element_text(color = "white", face = "bold"),
+    plot.caption.position = "plot",
+    legend.position = "top"
+  ) +
+  # Add a legend for the edge colors
+  scale_edge_color_identity(
+    guide = "legend", 
+    name = NULL,
+    labels = c(
+      "Treatment Path", 
+      "Biasing Paths",
+      "Other Paths"
+    )
+  ) +
+  # Tweak the legend aesthetics
+  guides(
+    edge_alpha = "none",
+    edge_color = "none") +
+  # Plot Annotations
+  annotate(
+    "text",
+    x = period_labels$x,
+    y = period_labels$y,
+    label = period_labels$.label,
+    parse = TRUE,
+    colour = "white",
+    size = 12,
+    family = "serif"
+  )
+```
+
+------------------------------------------------------------------------
+
+```{r dag-2, echo=FALSE, dpi=600, dev.args = list(bg = 'transparent'), fig.height=9, fig.width=16, fig.align='center', cache=TRUE}
+## Define the coordinates for the complex DAG
+complex_coords <- list(
+  x = c(X_L2 = 0, X_L1 = 1, X = 2, X_T1 = 3, Y_L2 = 0.2,
+        Y_L1 = 1.2, Y = 2.2, Z_L2 = 0, Z_L1 = 1, Z = 2, Z_T1 = 3),
+  y = c(X_L2 = 1, X_L1 = 1, X = 1, X_T1 = 1, Y_L2 = 0.5, 
+        Y_L1 = 0.5, Y = 0.5, Z_L2 = 0, Z_L1 = 0, Z = 0, Z_T1 = 0)
+)
+
+## Plotmath labels for the complex DAG
+complex_labels <- list(
+  X_L2 = "...", Z_L2 = "...",
+  Y_L2 = "Y[i*t-2]", X_L1 = "X[i*t-1]", 
+  Z_L1 = "Z[i*t-1]", Y_L1 = "Y[i*t-1]",
+  X = "X[i*t]", Z = "Z[i*t]",
+  Y = "Y[i*t]", X_T1 = "...", Z_T1 = "..."
+)
+
+## Creating a More Complex DAG using ggdag syntax
+complex_dag <- dagify(
+  Y_L2 ~ X_L2 + Z_L2,
+  X_L1 ~ X_L2 + Z_L1 + Y_L2,
+  Y_L1 ~ X_L1 + X_L2 + Z_L1,
+  Z_L1 ~ Z_L2 + Y_L2 + X_L2,
+  X ~ X_L1 + Z + Y_L1,
+  Y ~ X_L1 + Z + X,
+  Z ~ Z_L1 + Y_L1 + X_L1,
+  X_T1 ~ X + Y,
+  Z_T1 ~ Z + Y + X,
+  coords = complex_coords,
+  labels = complex_labels
+)
+
+# Modifications for the contemporaneous effect of X on Y
+complex_dag_contemp <- complex_dag %>%
+  # Convert the DAG to a tibble
+  tidy_dagitty() %>% 
+  # Get the adjustment Set
+  dag_adjustment_sets(exposure = "X", outcome = "Y") %>% 
+  # Create Path-Specific colors and transparencies
+  mutate(
+    # Color for the edges
+    .edge_colour = case_when(
+      name == "X" & to == "Y" ~ "#00FFFF",
+      TRUE ~ "white"
+    )
 )
 
 # Adjust the length of the edges
@@ -505,7 +623,6 @@ ggplot(data = sim_dag_tidy,
 \epsilon  &\sim  \textit{Exponential}\left(\frac{1}{\sigma_{y}}\right) &\\
 \end{align}
 ```
-
 ## MSM Design Stage Specification
 
 As illustrated in the equation for the stabilized weights, we specify two separate models for the numerator and denominator with weakly informative independent normal priors on $\alpha$ and $\beta$
@@ -518,12 +635,11 @@ As illustrated in the equation for the stabilized weights, we specify two separa
 \alpha &\sim \textit{Normal}(0, ~2) \quad \quad \beta_{k} \sim \textit{Normal}(0,~ 1)\\
 \end{align}
 ```
-
 ::: incremental
-- For the numerator model, the matrix $X_{n}$ is simply $\treat{X}_{\obs{i}\tim{t-1}}$ 
+-   For the numerator model, the matrix $X_{n}$ is simply $\treat{X}_{\obs{i}\tim{t-1}}$
 
-- For the denominator model, $X_{n} = \{\covar{Z}_{\obs{i}\tim{t}}, ~ \treat{X}_{\obs{i}\tim{t-1}},~ \resp{Y}_{\obs{i}\tim{t-1}}\}$
-::: 
+-   For the denominator model, $X_{n} = \{\covar{Z}_{\obs{i}\tim{t}}, ~ \treat{X}_{\obs{i}\tim{t-1}},~ \resp{Y}_{\obs{i}\tim{t-1}}\}$
+:::
 
 ## MSM Outcome Model Specification
 
@@ -538,7 +654,6 @@ As illustrated in the equation for the stabilized weights, we specify two separa
 \epsilon  &\sim  \textit{Exponential}\left(\frac{1}{\sigma_{y}}\right)  \quad \quad \delta_{\obs{i}\tim{t}} \sim \textit{Beta}(2, ~ 5)\\
 \end{align}
 ```
-
 # Simulation Results
 
 ## Simulation Results
@@ -744,13 +859,13 @@ param_results %>%
 ## Conclusion
 
 ::: incremental
--  Overall, our proposed procedure performs well in terms of parameter recovery under fairly general conditions
+-   Overall, our proposed procedure performs well in terms of parameter recovery under fairly general conditions
 
--  Going forward, we need to apply this to some real world political science examples
+-   Going forward, we need to apply this to some real world political science examples
 
--  Planned R package implementing our procedure by building on the `{brms}` package as a backend
+-   Planned R package implementing our procedure by building on the `{brms}` package as a backend
 
-    - Makes it super easy for anyone who knows standard R model syntax to use
-::: 
+    -   Makes it super easy for anyone who knows standard R model syntax to use
+:::
 
 ## References
