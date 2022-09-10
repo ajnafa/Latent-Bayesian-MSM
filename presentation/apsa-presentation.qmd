@@ -411,7 +411,7 @@ ggplot(
 -   Highlights a problem with fully Bayesian estimation of MSMs which requires the models be estimated jointly [@Zigler2013; @Robins2015]
 :::
 
-# A Bayesian Pseduo-Likelihood Approach
+# A Bayesian Pseudo-Likelihood Approach
 
 $$
 \definecolor{treat}{RGB}{27,208,213}
@@ -863,7 +863,7 @@ param_results %>%
 
 -   Going forward, we need to apply this to some real world political science examples
 
--   Planned R package implementing our procedure by building on the `{brms}` package as a backend
+-   Planned R package implementing our procedure by building on the `{brms}` package as a back end
 
     -   Makes it super easy for anyone who knows standard R model syntax to use
 :::
