@@ -1,0 +1,16 @@
+h1.title {
+  font-size: 80px;
+}
+
+.csl-entry {
+  padding-bottom: 0.5em;
+}
+
+ol.aside-footnotes {
+  padding-top: 3em;
+  font-size: 14pt;
+}
+
+.reveal a {
+    color: #eee;
+}

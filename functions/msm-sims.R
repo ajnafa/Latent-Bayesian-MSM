@@ -1,41 +1,20 @@
-# Function for the ADL models----
-sim_ardl_bayes <- function(sim.data, ...) {
-  
-  # Define the model formula
-  bayes_adl_form <- bf(
-    Y ~ X + X_Lag + Y_Lag + Y_Lag_2 + Z + Z_Lag,
-    family = brmsfamily(family = "gaussian", link = "identity")
-  )
-  
-  # Priors for the model
-  bayes_adl_priors <- prior(normal(0, 1.5), class = "b") +
-    prior(normal(mean(Y), 1.5*sd(Y)), class = "Intercept") +
-    prior(exponential(1/sd(Y)), class = "sigma")
-  
-  # ARDL (t-1) using brms
-  ardl_bayes <- brm(
-    formula = bayes_adl_form,
-    data = sim.data,
-    prior = bayes_adl_priors,
-    chains = 4, 
-    cores = 4L,
-    iter = 6000,
-    seed = 12345, 
-    backend = "cmdstanr",
-    save_pars = save_pars(all = TRUE),
-    control = list(adapt_delta = 0.9),
-    refresh = 0
-  )
-  
-  # Calculate a summary of the draws
-  ardl_result <- summarise_draws(ardl_bayes, .cores = 6L)
-  
-  # Return the data frame of draws
-  return(ardl_result)
-}
-
-# Function for calculating the stabilized weights----
+#' Function for Calculating the Stabilized Inverse Probability Weights
+#'
+#' @param sim.data The simulated data table returned by `dgp_sim`
+#' 
+#' @param psnum The numerator model of class `brmsfit` for the stabilized 
+#' weights
+#' 
+#' @param psdenom The denominator model of class `brmsfit` for the stabilized 
+#' weights
+#'
+#' @return Returns a data table with the location and scale of the stabilized
+#' inverse probability of treatment weights for the ATE of a binary treatment
+#' 
+#' @export bayes_ipwt
+#'
 bayes_ipwt <- function(sim.data, psnum, psdenom) {
+  
   # Generate posterior expectations for the numerator model
   preds_num <- t(brms::posterior_epred(psnum))
   
@@ -90,7 +69,17 @@ bayes_ipwt <- function(sim.data, psnum, psdenom) {
   return(sim.data)
 }
 
-# Function for the design stage of the MSM models----
+# Function for Fitting the Design Stage Models of the MSM
+#'
+#' @param sim.data The simulated data table returned by `dgp_sim`
+#' 
+#' @param ... Additional arguments passed to `brms::brm`
+#'
+#' @return The original data table with the location and scale of the stabilized
+#' inverse probability of treatment weights for the ATE of a binary treatment
+#' 
+#' @export sim_msm_bayes_design
+#' 
 sim_msm_bayes_design <- function(sim.data, ...) {
 
   # Design stage model numerator
@@ -138,15 +127,28 @@ sim_msm_bayes_design <- function(sim.data, ...) {
   return(out)
 }
 
-# Function for the outcome stage of the MSM models----
-sim_msm_bayes_outcome <- function(sim.data, stan_model, ...) {
-
+#' Function for Building the Data to Pass to the MSM Stan Model
+#'
+#' @param sim.data A data table object with the stabilized weight vectors 
+#' returned by the `sim_msm_bayes_design` function
+#' 
+#' @param shape_prior A numeric vector of length 2 containing the location and
+#' scale to use for the beta prior on the scale of the weights
+#' 
+#' @param ... Currently unused
+#'
+#' @return Returns a list object with the data to be passed to the Stan model
+#' 
+#' @export make_msm_data
+#'
+make_msm_data <- function(sim.data, shape_prior, ...) {
+  
   # Take advantage of brms functionality because I'm lazy
-  msm_data <- make_standata(
+  msm_data <- brms::make_standata(
     Y ~ X + X_Lag, 
     family = gaussian(), 
     data = sim.data
-    )
+  )
   
   # Prepare the data for use with Stan
   msm_data <- list(
@@ -156,34 +158,51 @@ sim_msm_bayes_outcome <- function(sim.data, stan_model, ...) {
     X = msm_data$X,
     ipw_mu = sim.data$cws_mean,
     ipw_sigma = sim.data$cws_sd,
-    sd_prior_shape1 = 2,
-    sd_prior_shape2 = 8,
-    sigma_prior = (1/sd(msm_data$Y)),
-    b_prior_sigma = (1.5 * (sd(msm_data$Y)/sd(msm_data$X[, 2]))),
-    alpha_prior_mu = mean(msm_data$Y),
-    alpha_prior_sigma = (2 * sd(msm_data$Y))
+    sd_prior_shape1 = shape_prior[1],
+    sd_prior_shape2 = shape_prior[2]
   )
   
+  return(msm_data)
+}
+
+#' Function for Fitting the MSM Outcome Model Simulations
+#' 
+#' @param msm.data A list object containing the data to be passed to the
+#' Stan model as returned by the `make_msm_data` function.
+#' 
+#' @param msm.stan.mod The compiled Stan model to be used for each simulated 
+#' data set. Should be an environment returned by `cmdstanr::cmdstan_model`
+#' 
+#' @param ... Additional arguments passed down to `cmdstanr::sample`
+#'
+#' @return Returns a tibble containing the summarized draws for each
+#' of the models in the simulation
+#' 
+#' @export sim_msm_bayes_outcome
+#'
+sim_msm_bayes_outcome <- function(msm.data, msm.stan.mod, ...) {
+  
   # Fit the Outcome-Stage Model
-  msm_sim_fit <- msm_sim_mod$sample(
-    data = msm_data,
+  msm_sim_fit <- msm_stan_mod$sample(
+    data = stan.data,
     refresh = 0,
     sig_figs = 5,
-    thin = 2,
     parallel_chains = 4,
     chains = 4,
-    iter_warmup = 2000,
-    iter_sampling = 2000,
+    iter_warmup = 1000,
+    iter_sampling = 1000,
     max_treedepth = 12,
     adapt_delta = 0.9,
-    show_messages = FALSE
+    show_messages = FALSE,
+    ...
   )
   
   # Calculate a summary of the draws
-  msm_result <- posterior::as_draws_rvars(
+  msm_result <- posterior::summarise_draws(
     msm_sim_fit$draws(
-      variables = c("lp__", "b_Intercept", "b", "sigma", "w_tilde")
-      ))
+      variables = c("lp__", "b_Intercept", "b", "w_tilde", "Intercept", "sigma")
+      )
+    )
   
   # Return the update data frame
   return(msm_result)

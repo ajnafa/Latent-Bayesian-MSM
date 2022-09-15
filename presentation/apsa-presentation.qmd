@@ -1,0 +1,871 @@
+---
+title: "Taking Uncertainty Seriously: Bayesian Marginal Structural Models for Causal Inference"
+author: "A. Jordan Nafa and Andrew Heiss"
+date: "September 16th, 2022"
+institute: "University of North Texas and Georgia State University"
+format: 
+  revealjs:
+    theme: blood
+    highlight-style: monokai
+    toc-depth: 2
+    self-contained: true
+    citations-hover: true
+    code-link: true
+    code-block-bg: "#272822"
+    css: "style.css"
+    include-in-header: "math-colors.js"
+    pdf-separate-fragments: true
+editor: visual
+width: 1360
+height: 800
+bibliography: "../assets/references.bib"
+csl: "../assets/apsa.csl"
+link-citations: yes
+---
+
+```{r, include=FALSE}
+# Load the required libraries
+pacman::p_load(
+  "tidyverse",
+  "data.table",
+  "dtplyr",
+  "dagitty",
+  "ggraph",
+  "ggdag",
+  "tidybayes",
+  "ggblend",
+  install = FALSE
+)
+
+## Base theme for the figures
+fig_theme <- theme_light(base_size = 30, base_family = "serif") +
+  ## Settings sepcific to the reveal.js theme
+  theme(
+    strip.background = element_blank(),
+    panel.background = element_rect(fill = "transparent", colour = NA),
+    plot.background = element_rect(fill = "transparent", colour = NA),
+    legend.background = element_rect(fill = "transparent", colour = NA),
+    legend.key = element_rect(fill = "transparent", colour = NA),
+    plot.title = element_text(color = "white"),
+    plot.subtitle = element_text(color = "white"),
+    plot.caption = element_text(color = "white", face = "italic"),
+    axis.text = element_text(color = "white"),
+    axis.title = element_text(color = "white", face = "bold"),
+    legend.title = element_text(color = "white", face = "bold"),
+    legend.text = element_text(color = "white", face = "bold"),
+    strip.text = element_text(face = "bold"),
+    plot.caption.position = "plot",
+    legend.position = "top"
+  )
+
+shorten_dag_arrows <- function(tidy_dag, proportion){
+  # Update underlying ggdag object
+  tidy_dag$data <- dplyr::mutate(tidy_dag$data, 
+                                 xend = (1-proportion/2)*(xend - x) + x, 
+                                 yend = (1-proportion/2)*(yend - y) + y,
+                                 xstart = (1-proportion/2)*(x - xend) + xend,
+                                 ystart = (1-proportion/2)*(y-yend) + yend)
+  return(tidy_dag)
+}
+
+# Read in the simulation results
+sim_results <- read_rds("../data/sim_results.rds")
+```
+
+## Introduction
+
+::: incremental
+-   In many fields of political science baseline random assignment and experimental design are impossible
+
+    -   For many research questions, observational data is our only option but this makes causal inference difficult
+
+    -   Assumption of *strict exogeneity* is usually unrealistic and valid instruments are a rare beast [@Liu2022; @Swamy2015; @Mogstad2018]
+
+    -   Need to rely on weaker assumptions for causal identification [@Blackwell2018; @Acharya2016; @Forastiere2018]
+
+-   How can we estimate causal effects and describe their uncertainty using observational data?
+:::
+
+## Causal Inference in Political Science
+
+::: incremental
+-   Cross-sectional time series data and causal inference
+
+    -   Causal inference literature in political science focuses largely on frequentist econometrics [i.e., @Imai2019; @Imai2020]
+
+        -   Still relies on strict exogeneity assumption
+
+    -   Recent works drawing on approaches developed in biostatistics outline a framework for estimating causal effects under the relatively weaker assumption of *sequential ignorability* [@Acharya2016; @Blackwell2018]
+
+-   Our goal in this paper is to extend the approach to causal inference under selection on observables introduced by @Blackwell2018 to a Bayesian framework
+:::
+
+## Marginal Structural Models
+
+::: incremental
+-   Marginal structural models (MSMs) are a multi-stage approach to estimating causal effects where baseline random assignment is not possible [@Robins1997; @Robins2000]
+
+    -   Relies on inverse probability of treatment weighting to achieve covariate balance by constructing pseudo-populations [@Imai2015; @Cole2008; @Saarela2015]
+
+    -   Adjusting for biasing paths in the propensity model allows for identification of causal effects that are impossible to estimate in a single model due to post-treatment bias
+
+    -   Possible to estimate lagged effects and "treatment histories" in cross-sectional time series data under complex temporal dependence [@Blackwell2018]
+:::
+
+------------------------------------------------------------------------
+
+```{r dag-1, echo=FALSE, dpi=600, dev.args = list(bg = 'transparent'), fig.height=9, fig.width=16, fig.align='center', cache=TRUE}
+## Define the coordinates for the complex DAG
+complex_coords <- list(
+  x = c(X_L2 = 0, X_L1 = 1, X = 2, X_T1 = 3, Y_L2 = 0.5,
+        Y_L1 = 1.5, Y = 2.5, Z_L2 = 0, Z_L1 = 1, Z = 2, Z_T1 = 3),
+  y = c(X_L2 = 1, X_L1 = 1, X = 1, X_T1 = 1, Y_L2 = 0.5, 
+        Y_L1 = 0.5, Y = 0.5, Z_L2 = 0, Z_L1 = 0, Z = 0, Z_T1 = 0)
+)
+
+## Plotmath labels for the complex DAG
+complex_labels <- list(
+  X_L2 = "...", Z_L2 = "...",
+  Y_L2 = "Y[i*t-2]", X_L1 = "X[i*t-1]", 
+  Z_L1 = "Z[i*t-1]", Y_L1 = "Y[i*t-1]",
+  X = "X[i*t]", Z = "Z[i*t]",
+  Y = "Y[i*t]", X_T1 = "...", Z_T1 = "..."
+)
+
+## Creating a More Complex DAG using ggdag syntax
+complex_dag <- dagify(
+  Y_L2 ~ X_L2 + Z_L2,
+  X_L1 ~ X_L2 + Z_L1 + Y_L2,
+  Y_L1 ~ X_L1 + X_L2 + Z_L1,
+  Z_L1 ~ Y_L2 + Z_L2,
+  X ~ X_L1 + Z + Y_L1,
+  Y ~ X_L1 + Z + X,
+  Z ~ Y_L1 + Z_L1,
+  X_T1 ~ X + Y,
+  Z_T1 ~ Z + Y,
+  coords = complex_coords,
+  labels = complex_labels
+)
+
+# Modifications for the contemporaneous effect of X on Y
+complex_dag_contemp <- complex_dag %>%
+  # Convert the DAG to a tibble
+  tidy_dagitty() %>% 
+  # Get the adjustment Set
+  dag_adjustment_sets(exposure = "X", outcome = "Y") %>% 
+  # Create Path-Specific colors and transparencies
+  mutate(
+    # Transparency for the edges
+    .edge_alpha = case_when(
+      name %in% c("X_L1", "Z", "X") & to %in% c("Y", "X") ~ 1,
+      TRUE ~ 0.25
+    ),
+    # Color for the edges
+    .edge_colour = case_when(
+      name == "X" & to == "Y" ~ "#00FFFF",
+      TRUE ~ "white"
+    )
+)
+
+# Data for the plot annotations
+period_labels <- tribble(
+  ~ x,  ~ y, ~ .label,
+  0.5,  1.1,  "bolditalic('Time '*t - 2)",
+  1.5,  1.1,  "bolditalic('Time '*t - 1)",
+  2.5,  1.1,  "bolditalic('Time '*t)"
+)
+
+# Adjust the length of the edges
+complex_dag_contemp <- shorten_dag_arrows(
+  complex_dag_contemp, 
+  proportion = 0.06
+  )
+
+# Generate the DAG for the contemporaneous effect of X on Y
+ggplot(
+  data = complex_dag_contemp, 
+  aes(x = x, y = y, xend = xend, yend = yend)
+) +
+  # Add the graph edges
+  geom_dag_edges(
+    aes(
+      x = xstart, 
+      y = ystart,
+      edge_color = .edge_colour
+      ), 
+    edge_width = 1.5
+  ) +
+  # Add the graph nodes
+  geom_dag_node(alpha = 0) +
+  # Add the graph text
+  geom_dag_text(
+    aes(label = label),
+    parse = TRUE,
+    size = 11,
+    color = "white",
+    family = "serif",
+    show.legend = FALSE
+  ) +
+  # Apply theme settings
+  theme_dag(
+    base_size = 24,
+    base_family = "serif",
+    strip.background = element_blank(),
+    panel.background = element_rect(fill = "transparent", colour = NA),
+    plot.background = element_rect(fill = "transparent", colour = NA),
+    legend.background = element_rect(fill = "transparent", colour = NA),
+    legend.key = element_rect(fill = "transparent", colour = NA),
+    plot.title = element_text(color = "white"),
+    plot.subtitle = element_text(color = "white"),
+    plot.caption = element_text(color = "white", face = "italic"),
+    legend.title = element_text(color = "white", face = "bold"),
+    legend.text = element_text(color = "white", face = "bold"),
+    plot.caption.position = "plot",
+    legend.position = "top"
+  ) +
+  # Add a legend for the edge colors
+  scale_edge_color_identity(
+    guide = "legend", 
+    name = NULL,
+    labels = c(
+      "Treatment Path", 
+      "Biasing Paths",
+      "Other Paths"
+    )
+  ) +
+  # Tweak the legend aesthetics
+  guides(
+    edge_alpha = "none",
+    edge_color = "none") +
+  # Plot Annotations
+  annotate(
+    "text",
+    x = period_labels$x,
+    y = period_labels$y,
+    label = period_labels$.label,
+    parse = TRUE,
+    colour = "white",
+    size = 12,
+    family = "serif"
+  )
+```
+
+------------------------------------------------------------------------
+
+```{r dag-2, echo=FALSE, dpi=600, dev.args = list(bg = 'transparent'), fig.height=9, fig.width=16, fig.align='center', cache=TRUE}
+## Define the coordinates for the complex DAG
+complex_coords <- list(
+  x = c(X_L2 = 0, X_L1 = 1, X = 2, X_T1 = 3, Y_L2 = 0.2,
+        Y_L1 = 1.2, Y = 2.2, Z_L2 = 0, Z_L1 = 1, Z = 2, Z_T1 = 3),
+  y = c(X_L2 = 1, X_L1 = 1, X = 1, X_T1 = 1, Y_L2 = 0.5, 
+        Y_L1 = 0.5, Y = 0.5, Z_L2 = 0, Z_L1 = 0, Z = 0, Z_T1 = 0)
+)
+
+## Plotmath labels for the complex DAG
+complex_labels <- list(
+  X_L2 = "...", Z_L2 = "...",
+  Y_L2 = "Y[i*t-2]", X_L1 = "X[i*t-1]", 
+  Z_L1 = "Z[i*t-1]", Y_L1 = "Y[i*t-1]",
+  X = "X[i*t]", Z = "Z[i*t]",
+  Y = "Y[i*t]", X_T1 = "...", Z_T1 = "..."
+)
+
+## Creating a More Complex DAG using ggdag syntax
+complex_dag <- dagify(
+  Y_L2 ~ X_L2 + Z_L2,
+  X_L1 ~ X_L2 + Z_L1 + Y_L2,
+  Y_L1 ~ X_L1 + X_L2 + Z_L1,
+  Z_L1 ~ Z_L2 + Y_L2 + X_L2,
+  X ~ X_L1 + Z + Y_L1,
+  Y ~ X_L1 + Z + X,
+  Z ~ Z_L1 + Y_L1 + X_L1,
+  X_T1 ~ X + Y,
+  Z_T1 ~ Z + Y + X,
+  coords = complex_coords,
+  labels = complex_labels
+)
+
+# Modifications for the contemporaneous effect of X on Y
+complex_dag_contemp <- complex_dag %>%
+  # Convert the DAG to a tibble
+  tidy_dagitty() %>% 
+  # Get the adjustment Set
+  dag_adjustment_sets(exposure = "X", outcome = "Y") %>% 
+  # Create Path-Specific colors and transparencies
+  mutate(
+    # Color for the edges
+    .edge_colour = case_when(
+      name == "X" & to == "Y" ~ "#00FFFF",
+      TRUE ~ "white"
+    )
+)
+
+# Adjust the length of the edges
+complex_dag_contemp <- shorten_dag_arrows(
+  complex_dag_contemp, 
+  proportion = 0.06
+  )
+
+# Generate the DAG for the contemporaneous effect of X on Y
+ggplot(
+  data = complex_dag_contemp, 
+  aes(x = x, y = y, xend = xend, yend = yend)
+) +
+  # Add the graph edges
+  geom_dag_edges(
+    aes(
+      x = xstart, 
+      y = ystart, 
+      edge_color = .edge_colour
+      ), 
+    edge_width = 1.5
+  ) +
+  # Add the graph nodes
+  geom_dag_node(alpha = 0) +
+  # Add the graph text
+  geom_dag_text(
+    aes(label = label),
+    parse = TRUE,
+    size = 11,
+    color = "white",
+    family = "serif",
+    show.legend = FALSE
+  ) +
+  # Apply theme settings
+  theme_dag(
+    base_size = 24,
+    base_family = "serif",
+    strip.background = element_blank(),
+    panel.background = element_rect(fill = "transparent", colour = NA),
+    plot.background = element_rect(fill = "transparent", colour = NA),
+    legend.background = element_rect(fill = "transparent", colour = NA),
+    legend.key = element_rect(fill = "transparent", colour = NA),
+    plot.title = element_text(color = "white"),
+    plot.subtitle = element_text(color = "white"),
+    plot.caption = element_text(color = "white", face = "italic"),
+    legend.title = element_text(color = "white", face = "bold"),
+    legend.text = element_text(color = "white", face = "bold"),
+    plot.caption.position = "plot",
+    legend.position = "top"
+  ) +
+  # Add a legend for the edge colors
+  scale_edge_color_identity(
+    guide = "legend", 
+    name = NULL,
+    labels = c(
+      "Treatment Path", 
+      "Biasing Paths",
+      "Other Paths"
+    )
+  ) +
+  # Tweak the legend aesthetics
+  guides(
+    edge_alpha = "none",
+    edge_color = "none") +
+  # Plot Annotations
+  annotate(
+    "text",
+    x = period_labels$x,
+    y = period_labels$y,
+    label = period_labels$.label,
+    parse = TRUE,
+    colour = "white",
+    size = 12,
+    family = "serif"
+  )
+```
+
+## Why Bayesian Estimation?
+
+::: incremental
+-   Frequentist uncertainty estimates are based on assumptions about *sampling distributions*
+
+    -   Yet, in many areas of political science our data comprise an *apparent population* rather than a random sample from a larger population of interest [@Berk1995; @Gill2001]
+
+        -   For example, all sovereign countries between 1945 and 2020 or all states in U.S. over some time period
+
+    -   It doesn't make sense to think in terms of random samples from a population if your observed data *is the population* [@Western1994; @Gill2020]
+:::
+
+## Why Bayesian Estimation?
+
+::: incremental
+-   A Bayesian framework provides a straightforward approach to accounting for and propagating uncertainty in the specification of the propensity model
+
+    -   Bayesian Model Averaging (BMA) and cross-validation based stacking approaches allow us to avoid choosing a single specification for the propensity model [@Zigler2014; @Kaplan2014]
+
+    -   Acknowledges that we are virtually always uncertain about what the true set of confounders is
+
+    -   May help reduce the degree to which our results depend on the propensity model being correctly specified [@Hahn2020]
+:::
+
+## Why Bayesian Estimation?
+
+::: incremental
+-   Inverse probability of treatment weights are an estimated quantity with associated uncertainty [@Liao2020]
+
+    -   Most applications of IPTW methods in political science assume the weights are deterministic [i.e., @Blackwell2018; @Ladam2018; @Kurtz2021]
+
+    -   Need to propagate uncertainty in the design stage weights to outcome stage [@Liao2020]
+
+-   Highlights a problem with fully Bayesian estimation of MSMs which requires the models be estimated jointly [@Zigler2013; @Robins2015]
+:::
+
+# A Bayesian Pseudo-Likelihood Approach
+
+$$
+\definecolor{treat}{RGB}{27,208,213}
+\definecolor{outcome}{RGB}{98,252,107}
+\definecolor{baseconf}{RGB}{244,199,58}
+\definecolor{covariates}{RGB}{178,26,1}
+\definecolor{index}{RGB}{37,236,167}
+\definecolor{timeid}{RGB}{244,101,22}
+\definecolor{mu}{RGB}{71,119,239}
+\definecolor{sigma}{RGB}{219,58,7}
+\newcommand{normalcolor}{\color{white}}
+\newcommand{treat}[1]{\color{treat} #1 \normalcolor}
+\newcommand{resp}[1]{\color{outcome} #1 \normalcolor}
+\newcommand{conf}[1]{\color{baseconf} #1 \normalcolor}
+\newcommand{covar}[1]{\color{covariates} #1 \normalcolor}
+\newcommand{obs}[1]{\color{index} #1 \normalcolor}
+\newcommand{tim}[1]{\color{timeid} #1 \normalcolor}
+\newcommand{mean}[1]{\color{mu} #1 \normalcolor}
+\newcommand{vari}[1]{\color{sigma} #1 \normalcolor}
+$$
+
+## Bayesian Design Stage Estimation
+
+For some binary treatment $\treat{X}_{\obs{i}\tim{t}}$, the posterior expectation of the stabilized inverse probability of treatment weights for each unit $\obs{i}$ at time $\tim{t}$ is
+
+$$
+\text{IPW}_{\obs{i}\tim{t}} = \prod^{\tim{t}}_{\tim{t} = \tim{1}} \frac{\int\Pr[\treat{X}_{\obs{i}\tim{t}}~ | ~\treat{X}_{\obs{i}\tim{t-1}},~ \conf{C}_{\obs{i}}]\pi(\theta)d\theta}{\int\Pr[\treat{X}_{\obs{i}\tim{t}}~ |~\covar{Z}_{\obs{i}\tim{t}}, ~ \treat{X}_{\obs{i}\tim{t-1}},~ \resp{Y}_{\obs{i}\tim{t-1}},~ \conf{C}_{\obs{i}}]\pi(\theta)d\theta}
+$$
+
+::: incremental
+-   $\treat{X}_{\obs{i}\tim{t-1}}$ and $\resp{Y}_{\obs{i}\tim{t-1}}$ denote the <font style = "color:#1BD0D5FF">treatment status</font> and <font style = "color:#62FC6BFF">outcome</font> for the $\obs{i^{th}}$ unit in the previous period respectively
+
+-   $\conf{C}_{\obs{i}}$ is a set of <font style = "color:#F4C73AFF">time-invariant</font> baseline covariates
+
+-   $\covar{Z}_{\obs{i}\tim{t}}$ is a set of <font style = "color:#B21A01FF">time-varying</font> covariates that satisfies sequential ignorability
+
+-   Although we focus mainly on the average treatment effect at times $\tim{t}$ and $\tim{t-1}$, it is possible to estimate longer lags and other estimands as well.
+:::
+
+## Bayesian Design Stage Estimation
+
+It is also possible to extend IPTW to cases in which $\treat{X}_{\obs{i}\tim{t}}$ is continuous, in which case the stabilized weights are
+
+$$\text{IPW}_{\obs{i}\tim{t}} = \prod^{\tim{t}}_{\tim{t} = \tim{1}} \frac{f_{\treat{X}_{\obs{i}\tim{t}} | \treat{X}_{\obs{i}\tim{t-1}},\conf{C}_{\obs{i}}}[(\treat{X}_{\obs{i}\tim{t}}~ | ~\treat{X}_{\obs{i}\tim{t-1}},~ \conf{C}_{\obs{i}}); ~\mean{\mu}, ~\vari{\sigma^{2}}]}{f_{\treat{X}_{\obs{i}\tim{t}} |\covar{Z}_{\obs{i}\tim{t}}, \treat{X}_{\obs{i}\tim{t-1}}, \resp{Y}_{\obs{i}\tim{t-1}}, \conf{C}_{\obs{i}}}[(\treat{X}_{\obs{i}\tim{t}}~ |~\covar{Z}_{\obs{i}\tim{t}}, ~ \treat{X}_{\obs{i}\tim{t-1}},~ \resp{Y}_{\obs{i}\tim{t-1}},~ \conf{C}_{\obs{i}}); ~\mean{\mu}, ~\vari{\sigma^{2}}]}
+$$
+
+::: incremental
+-   Each of the parameters $\treat{X}$, $\resp{Y}$, $\covar{Z}$, and $\conf{C}$ in the numerator and denominator are the same as in the binary version
+
+-   The $f_{\dots}(\cdot)$ expressions represent a probability density function with <font style="color:#4777EFFF">mean</font> $\mean{\mu}$ and <font style="color:#DB3A07FF">variance</font> $\vari{\sigma^{2}}$
+
+-   We'll focus mainly on binary treatment regimes, though this particular method tends to behave better for a continuous $\treat{X}$ in some cases
+:::
+
+## The Bayesian Pseudo-Likelihood
+
+To propagate uncertainty in the distribution of weights from the design stage while avoiding the problem of feedback inherent in joint estimation, we develop a Bayesian Pseudo-Likelihood estimator [@Savitsky2016; @Williams2020b; @Williams2020a]
+
+```{=tex}
+\begin{align}
+\hat{\pi}( \theta~|~y, \tilde{w}) ~\propto~ \left [\prod_{i = 1}^{n} \Pr(y_{i} ~|~ \theta)^{\tilde{w_{i}}}\right ]\pi(\theta)
+\end{align}
+```
+::: incremental
+-   $\tilde{w_{i}}$ is the realized IPT weight for the $i^{th}$ observation
+
+-   $\prod_{i = 1}^{n} \Pr(y_{i} ~|~ \theta)^{\tilde{w_{i}}}$ is the pseudo-likelihood and $\pi$ denotes the prior probability for a parameter $\theta$
+
+-   $\hat{\pi}( \theta~|~y, \tilde{w})$ represents the Bayesian pseudo-posterior for $\theta$
+:::
+
+## Parameterization of the Weights
+
+::: incremental
+-   We decompose the matrix of weights from the design stage into a location component $\lambda$ and a scale component $\delta$
+
+-   The weight for each observation is sampled as $$\tilde{w}_{\obs{i}\tim{t}} \sim \lambda_{\obs{i}\tim{t}} + \delta_{\obs{i}\tim{t}} \cdot \pi(\delta_{\obs{i}\tim{t}})$$ where $\pi(\delta_{\obs{i}\tim{t}})$ is a regularizing prior on the scale of the weights such as an exponential distribution with rate $\lambda > 3.5$ or Beta distribution with shape parameters $\alpha = 2$ and $\beta \ge 2$
+
+-   Provides computational stability and shuts down extreme values when the IPT weights have high variance
+
+-   Straightforward extensions for nested data structures via double-weighted estimation [@Savitsky2021]
+:::
+
+# Simulation Study Design
+
+## Simulation Study Overview
+
+::: incremental
+-   To assess parameter recovery and bias, we adapt the original simulation design from @Blackwell2018
+
+-   We simulate 2000 data sets of varying dimensions, manipulating the path $\treat{X}_{\obs{i}\tim{t-1}} \longrightarrow \covar{Z}_{\obs{i}\tim{t}}$
+
+    -   Periods $\in \{20, 50\}$
+
+    -   Groups $\in \{25, 45, 65, 85, 100\}$
+
+-   Objectives
+
+    -   Identify both $\treat{X}_{\obs{i}\tim{t}} \longrightarrow \resp{Y}_{\obs{i}\tim{t}}$ and $\treat{X}_{\obs{i}\tim{t-1}} \longrightarrow \resp{Y}_{\obs{i}\tim{t}}$
+
+    -   Compare our Bayesian Pseduo-Likelihood approach against the more common auto-regressive distributed lag (ARDL) specification
+:::
+
+## DAG for the Simulated Data
+
+```{r dag-simstudy, echo=FALSE, dpi=600, dev.args = list(bg = 'transparent'), fig.height=9, fig.width=16, fig.align='center', cache=TRUE}
+## Define the coordinates for the complex DAG
+sim_dag_coords <- list(
+  x = c(X_L2 = 0, X_L1 = 1, X = 2, X_T1 = 3, Y_L2 = 0.5,
+        Y_L1 = 1, Y = 2.2, Z_L2 = 0, Z_L1 = 1, Z = 1.7, 
+        Z_T1 = 3, U = 1.2),
+  y = c(X_L2 = 1, X_L1 = 1, X = 1, X_T1 = 1, Y_L2 = 0.5, 
+        Y_L1 = 0.5, Y = 0.5, Z_L2 = 0, Z_L1 = 0, Z = 0, 
+        Z_T1 = 0, U = 0.25)
+)
+
+## Plotmath labels for the complex DAG
+sim_dag_labels <- list(
+  X_L2 = "...", Z_L2 = "...",
+  Y_L2 = "Y[i*t-2]", X_L1 = "X[i*t-1]", 
+  Z_L1 = "Z[i*t-1]", Y_L1 = "Y[i*t-1]",
+  X = "X[i*t]", Z = "Z[i*t]",
+  Y = "Y[i*t]", X_T1 = "...", 
+  Z_T1 = "...", U = "upsilon[i]"
+)
+
+## Creating a More Complex DAG using ggdag syntax
+sim_dag <- dagify(
+  Y_L1 ~ X_L1 + U,
+  Z_L1 ~ X_L2 + U,
+  X_L1 ~ Z_L2,
+  Y ~ X + U,
+  X ~ Y_L1 + Z,
+  Z_T1 ~ X,
+  X_T1 ~ Y,
+  Z ~ X_L1 + U,
+  coords = sim_dag_coords,
+  labels = sim_dag_labels
+)
+
+# Modifications for the contemporaneous effect of X on Y
+sim_dag_tidy <- sim_dag %>%
+  # Convert the DAG to a tibble
+  tidy_dagitty() %>% 
+  # Create Path-Specific colors and transparencies
+  mutate(
+    # Color for the edges
+    .edge_colour = case_when(
+      name == "X_L1" & to == "Z" ~ "#7CFC00",
+      name == "U" ~ "#FF3030",
+      TRUE ~ "white"
+    ),
+    .edge_type = case_when(
+      name == "X_L1" & to == "Z" ~ "solid",
+      TRUE ~ "dashed"
+  ))
+
+# Generate the DAG for the contemporaneous effect of X on Y
+ggplot(data = sim_dag_tidy, 
+  aes(x = x, y = y, xend = xend, yend = yend)
+) +
+  # Add the graph edges
+  geom_dag_edges(aes(edge_color = .edge_colour, edge_linetype = .edge_type), 
+    edge_width = 1.5
+  ) +
+  # Add the graph nodes
+  geom_dag_node(alpha = 0) +
+  # Add the graph text
+  geom_dag_text(
+    aes(label = label),
+    parse = TRUE,
+    size = 11,
+    color = "white",
+    family = "serif",
+    show.legend = FALSE
+  ) +
+  # Apply theme settings
+  theme_dag(
+    base_size = 24,
+    base_family = "serif",
+    strip.background = element_blank(),
+    panel.background = element_rect(fill = "transparent", colour = NA),
+    plot.background = element_rect(fill = "transparent", colour = NA),
+    legend.background = element_rect(fill = "transparent", colour = NA),
+    legend.key = element_rect(fill = "transparent", colour = NA),
+    plot.title = element_text(color = "white"),
+    plot.subtitle = element_text(color = "white"),
+    plot.caption = element_text(color = "white", face = "italic"),
+    legend.title = element_text(color = "white", face = "bold"),
+    legend.text = element_text(color = "white", face = "bold"),
+    plot.caption.position = "plot",
+    legend.position = "top"
+  ) +
+  # Add a legend for the edge colors
+  scale_edge_color_identity() +
+  # Tweak the legend aesthetics
+  guides(edge_alpha = "none", edge_color = "none", edge_linetype = "none") 
+```
+
+## ARDL Model Specification
+
+```{=tex}
+\begin{align}
+\resp{y}_{\obs{i}\tim{t}} &\sim \textit{Normal}(\mu_{\obs{i}\tim{t}}, \epsilon^{2})\\
+&\mu_{\obs{i}\tim{t}} = \alpha + \beta_{1}\treat{X}_{\obs{i}\tim{t}} + \beta_{2}\treat{X}_{\obs{i}\tim{t-1}} + \beta_{3}\resp{Y}_{\obs{i}\tim{t-1}} + \beta_{4}\resp{Y}_{\obs{i}\tim{t-2}} +\\
+& \quad \beta_{5}\covar{Z}_{\obs{i}\tim{t}} + \beta_{6}\covar{Z}_{\obs{i}\tim{t-1}} + \epsilon\\
+\text{with priors}\\
+\alpha &\sim \textit{Normal}(\bar{y}, ~ 2 \cdot \sigma_{y}) \quad\quad\quad \beta_{k} \sim \textit{Normal}\left(0, ~ 1.5 \cdot \frac{\sigma_{y}}{\sigma_{x}}\right)\\
+\epsilon  &\sim  \textit{Exponential}\left(\frac{1}{\sigma_{y}}\right) &\\
+\end{align}
+```
+## MSM Design Stage Specification
+
+As illustrated in the equation for the stabilized weights, we specify two separate models for the numerator and denominator with weakly informative independent normal priors on $\alpha$ and $\beta$
+
+```{=tex}
+\begin{align}
+\Pr(\treat{X}_{\obs{i}\tim{t}} = 1 ~|~ \theta_{\obs{i}\tim{t}}) &\sim \textit{Bernoulli}(\theta_{\obs{i}\tim{t}})\\
+&\theta_{\obs{i}\tim{t}} = \text{logit}^{-1}(\alpha + X_{n}\beta_{k})\\
+\text{with priors}\\
+\alpha &\sim \textit{Normal}(0, ~2) \quad \quad \beta_{k} \sim \textit{Normal}(0,~ 1)\\
+\end{align}
+```
+::: incremental
+-   For the numerator model, the matrix $X_{n}$ is simply $\treat{X}_{\obs{i}\tim{t-1}}$
+
+-   For the denominator model, $X_{n} = \{\covar{Z}_{\obs{i}\tim{t}}, ~ \treat{X}_{\obs{i}\tim{t-1}},~ \resp{Y}_{\obs{i}\tim{t-1}}\}$
+:::
+
+## MSM Outcome Model Specification
+
+```{=tex}
+\begin{align}
+\resp{y}_{\obs{i}\tim{t}} &\sim \textit{Normal}(\mu_{\obs{i}\tim{t}}, \epsilon^{2})^{\tilde{w}_{\obs{i}\tim{t}}}\\
+&\mu_{\obs{i}\tim{t}} = \alpha + \beta_{1}\treat{X}_{\obs{i}\tim{t}} + \beta_{2}\treat{X}_{\obs{i}\tim{t-1}} + \epsilon  & \\
+\text{where}\\
+\tilde{w}_{\obs{i}\tim{t}} &\sim \lambda_{\obs{i}\tim{t}} + \delta_{\obs{i}\tim{t}} \cdot \pi{(\delta)}\\
+\text{with priors}\\
+\alpha &\sim \textit{Normal}(\bar{y}, ~ 2 \cdot \sigma_{y}) \quad \quad \beta_{k} \sim \textit{Normal}\left(0, ~ 1.5 \cdot \frac{\sigma_{y}}{\sigma_{x}}\right)\\
+\epsilon  &\sim  \textit{Exponential}\left(\frac{1}{\sigma_{y}}\right)  \quad \quad \delta_{\obs{i}\tim{t}} \sim \textit{Beta}(2, ~ 5)\\
+\end{align}
+```
+# Simulation Results
+
+## Simulation Results
+
+```{r sim-results-1, echo=FALSE, dpi=600, dev.args = list(bg = 'transparent'), fig.height=9, fig.width=16, fig.align='center', cache=TRUE, dev='svg'}
+# Calculate the loss function
+error_by_groups <- sim_results %>% 
+  # Group by dimensions
+  group_by(id, groups, cond) %>% 
+  # Calculate the mean
+  summarise(across(
+    c(MSM_X_Lag, ARDL_Estimate), 
+    ~ sqrt(mean((truth - .x)^2)),
+    .names = "{.col}_rmse"
+  )) %>% 
+  # Pivot the result to long form
+  pivot_longer(cols = ends_with("rmse")) %>% 
+  ## Set the names for the facets
+  mutate(name = if_else(name == "MSM_X_Lag_rmse", "MSM", "ARDL"))
+
+# Plot RMSE by number of groups
+ggplot(error_by_groups, aes(x = groups, y = value)) +
+  # Facet the plot by condition
+  facet_wrap(~ cond) +
+  geom_point(
+    aes(fill = name, shape = name), 
+    size = 3,
+    position = "jitter",
+  ) * blend("multiply") +
+  scale_fill_manual(values = c("#00EE76", "#FF4040")) +
+  scale_shape_manual(values = c(22, 23)) +
+  scale_x_continuous(breaks = seq(20, 100, 20)) +
+  scale_y_continuous(limits = c(0, 0.10)) +
+  labs(
+    y = latex2exp::TeX(r'($\sqrt{E(\hat{\theta} - \theta)^{2}}$)'),
+    x = "Number of Groups",
+    fill = "Model",
+    shape = "Model",
+  ) +
+  fig_theme +
+  theme(legend.position = "top")
+```
+
+## Simulation Results
+
+```{r sim-results-2, echo=FALSE, dpi=600, dev.args = list(bg = 'transparent'), fig.height=9, fig.width=16, fig.align='center', cache=TRUE, dev='svg'}
+# Calculate the loss function
+error_by_periods <- sim_results %>% 
+  # Group by dimensions
+  group_by(id, periods, cond) %>% 
+  # Calculate the mean
+  summarise(across(
+    c(MSM_X_Lag, ARDL_Estimate), 
+    ~ sqrt(mean((truth - .x)^2)),
+    .names = "{.col}_rmse"
+  )) %>% 
+  # Pivot the result to long form
+  pivot_longer(cols = ends_with("rmse")) %>% 
+  ## Set the names for the facets
+  mutate(name = if_else(name == "MSM_X_Lag_rmse", "MSM", "ARDL"))
+
+# Plot RMSE by number of periods
+ggplot(error_by_periods, aes(x = periods, y = value)) +
+  # Facet the plot by condition
+  facet_wrap(~ cond) +
+  geom_point(
+    aes(fill = name, shape = name), 
+    size = 3,
+    position = "jitter"
+  ) * blend("multiply") +
+  scale_fill_manual(values =  c("#00EE76", "#FF4040")) +
+  scale_shape_manual(values = c(22, 23)) +
+  scale_y_continuous(limits = c(0, 0.10)) +
+  scale_x_continuous(breaks = c(20, 50)) +
+  labs(
+    y = latex2exp::TeX(r'($\sqrt{E(\hat{\theta} - \theta)^{2}}$)'),
+    x = "Number of Periods",
+    fill = "Model",
+    shape = "Model",
+  ) +
+  fig_theme +
+  theme(legend.position = "top")
+```
+
+## Simulation Results
+
+```{r sim-results-3, echo=FALSE, dpi=600, dev.args = list(bg = 'transparent'), fig.height=9, fig.width=16, fig.align='center', cache=TRUE, dev='svg'}
+# Calculate the loss function
+error_by_cond <- sim_results %>% 
+  # Group by dimensions
+  group_by(id, cond) %>% 
+  # Calculate the mean
+  summarise(across(
+    c(MSM_X_Lag, ARDL_Estimate), 
+    ~ sqrt(mean((truth - .x)^2)),
+    .names = "{.col}_rmse"
+  )) %>% 
+  # Pivot the result to long form
+  pivot_longer(cols = ends_with("rmse")) %>% 
+  ## Set the names for the facets
+  mutate(name = if_else(name == "MSM_X_Lag_rmse", "MSM", "ARDL"))
+
+# Plot RMSE by number of periods
+ggplot(error_by_cond, aes(x = cond, y = value)) +
+  geom_point(
+    aes(fill = name, shape = name), 
+    size = 3,
+    position = "jitter"
+  ) * blend("multiply") +
+  scale_fill_manual(values =  c("#00EE76", "#FF4040")) +
+  scale_shape_manual(values = c(22, 23)) +
+  scale_y_continuous(limits = c(0, 0.10)) +
+  labs(
+    y = latex2exp::TeX(r'($\sqrt{E(\hat{\theta} - \theta)^{2}}$)'),
+    x = "Z Exogeneity",
+    fill = "Model",
+    shape = "Model",
+  ) +
+  fig_theme +
+  theme(legend.position = "right")
+```
+
+## Simulation Results
+
+```{r sim-results-4, echo=FALSE, dpi=600, dev.args = list(bg = 'transparent'), fig.height=9, fig.width=16, fig.align='center', cache=TRUE, dev='svg'}
+# Data for plotting the distributions of the estimates
+param_results <- sim_results %>% 
+  # Pivot estimates to long form
+  pivot_longer(
+    cols = c(MSM_X_Lag:MSM_X, ARDL_X, ARDL_Estimate),
+    names_to = "param",
+    values_to = "estimate"
+  ) %>% 
+  # Make facet labels
+  mutate(
+    parameter = case_when(
+      param == "MSM_X_Lag" ~ latex2exp::TeX(r'(Distribution of MSM Estimates: $X_{it-1}$)', output = "character"),
+      param == "ARDL_Estimate" ~ latex2exp::TeX(r'(Distribution of ARDL Estimates: $X_{it-1}$)', output = "character"),
+      param == "MSM_X" ~ latex2exp::TeX(r'(Distribution of MSM Estimates: $X_{it}$)', output = "character"),
+      param == "ARDL_X" ~ latex2exp::TeX(r'(Distribution of ARDL Estimates: $X_{it}$)', output = "character")
+    ),
+    model = case_when(
+      str_detect(param, "MSM") ~ "MSM",
+      str_detect(param, "ARDL") ~ "ARDL",
+    ),
+    truth = case_when(
+      str_detect(param, "X_Lag|Estimate") ~ 0,
+      str_detect(param, "MSM_X|ARDL_X") ~ -0.1
+    )
+  )
+
+# Distribution of the means for the lag of x
+param_results %>% 
+  filter(truth == 0) %>% 
+  ggplot(., aes(x = estimate, y = cond)) +
+  facet_wrap(~ parameter, labeller = label_parsed) +
+  stat_slabinterval(
+    aes(slab_alpha = stat(pdf), fill = model, shape = model),
+    fill_type = "gradient",
+    point_interval = "mean_qi",
+    show.legend = FALSE
+  ) +
+  geom_vline(xintercept = 0, lty = "dashed", color = "white") +
+  scale_shape_manual(values = c(22, 23)) +
+  scale_fill_manual(values = c("#00EE76", "#FF4040")) +
+  labs(
+    y = "",
+    x = "Posterior Mean Estimates",
+    subtitle = "True Parameter Value is 0"
+  ) +
+    fig_theme +
+  theme(legend.position = "top")
+```
+
+## Simulation Results
+
+```{r sim-results-5, echo=FALSE, dpi=600, dev.args = list(bg = 'transparent'), fig.height=9, fig.width=16, fig.align='center', cache=TRUE, dev='svg'}
+# Distribution of the means for x
+param_results %>% 
+  filter(truth == -0.1) %>% 
+  ggplot(., aes(x = estimate, y = cond)) +
+  facet_wrap(~ parameter, labeller = label_parsed) +
+  stat_slabinterval(
+    aes(slab_alpha = stat(pdf), fill = model, shape = model),
+    fill_type = "gradient",
+    point_interval = "mean_qi",
+    show.legend = FALSE
+  ) +
+  geom_vline(xintercept = -0.1, lty = "dashed") +
+  scale_fill_manual(values = c("#00EE76", "#FF4040")) +
+  scale_shape_manual(values = c(22, 23)) +
+  labs(
+    y = "",
+    x = "Posterior Mean Estimates",
+    subtitle = "True Parameter Value is -0.10"
+  ) +
+    fig_theme +
+  theme(legend.position = "top")
+```
+
+# Conclusions
+
+## Conclusion
+
+::: incremental
+-   Overall, our proposed procedure performs well in terms of parameter recovery under fairly general conditions
+
+-   Going forward, we need to apply this to some real world political science examples
+
+-   Planned R package implementing our procedure by building on the `{brms}` package as a back end
+
+    -   Makes it super easy for anyone who knows standard R model syntax to use
+:::
+
+## References

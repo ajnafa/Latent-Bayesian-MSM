@@ -3,12 +3,9 @@
 .Rhistory
 .RData
 
-# Data stuff
-# (ignore for now)
-data
-
 # Targets stuff
 _targets
+
 # Site output
 **/_site/*
 **/site_libs/*
@@ -31,5 +28,5 @@ Icon?
 admin/*
 desktop.ini
 sources/*
-assets/references.bib.bak
-assets/references.bib.sav
+.old-stuff
+
