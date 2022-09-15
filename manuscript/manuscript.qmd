@@ -1,0 +1,428 @@
+---
+title: "Taking Uncertainty Seriously"
+subtitle: "Bayesian Marginal Structural Models for Causal Inference in Political Science"
+short-title: "Taking Uncertainty Seriously"
+author:
+  - name: "A. Jordan Nafa"
+    affiliation: "University of North Texas"
+    orcid: "0000-0001-5574-3950"
+    attributes:
+      corresponding: true
+  - name: "Andrew Heiss"
+    affiliation: "Georgia State University"
+    orcid: "0000-0002-3948-3914"
+abstract: |-
+  The past two decades have been characterized by considerable progress in developing approaches to causal inference in situations where true experimental manipulation is either impractical or impossible. With few exceptions, however, commonly employed techniques in political science have developed largely within a frequentist framework. In this article, we argue that common approaches rest fundamentally upon assumptions that are difficult to defend in many areas of political research and highlight the benefits of quantifying uncertainty in the estimation of causal effects. Extending the approach to causal inference for cross-sectional time series and panel data under selection on observables introduced by Blackwell and Glynn (2018), we develop a two-step Bayesian pseudo-likelihood method for estimating marginal structural models. We demonstrate our proposed procedure via a simulation study and two empirical examples. Finally, we provide flexible open-source software implementing the proposed method.
+code-repo: "Replication materials for this manuscript are available at <https://github.com/ajnafa/Latent-Bayesian-MSM/tree/apsa-paper>"
+thanks: |-
+  This manuscript was prepared for the American Political Science Association's Annual Meeting in Montreal, Quebec, September 15--18, 2022.
+date: September 9, 2022
+keywords: 
+  - Bayesian statistics
+  - causal inference
+  - panel data
+bibliography: "../assets/references.bib"
+format: 
+  hikmah-pdf:
+    fontsize: 12pt
+    # Custom fonts
+    mainfont: "Linux Libertine O"
+    mainfontoptions: 
+      - "Numbers=Proportional"
+      - "Numbers=OldStyle"
+    sansfont: "Linux Libertine O"  # not actually sans but whatevs
+    #monofont: "InconsolataGo"
+    monofontoptions: 
+      - "Mapping=tex-ansi"
+      - "Scale=MatchLowercase"
+    mathfont: "Libertinus Math"
+
+    # Colors
+    include-in-header: 
+      text: |
+        \definecolor{untgreen}{HTML}{00853E}
+    linkcolor: untgreen
+    urlcolor: untgreen
+    citecolor: untgreen
+    
+    # Use biblatex-chicago
+    biblatex-chicago: true
+    biblio-style: authordate
+    biblatexoptions: 
+      - backend=biber
+      - autolang=hyphen
+      - isbn=false
+      - uniquename=false
+    knitr:
+      opts_chunk:
+        fig.retina: 1
+  html: default
+fig-cap-location: top
+
+knitr:
+  opts_chunk:
+    echo: false
+    warning: false
+    message: false
+    fig.retina: 3
+    fig.path: "figures/"
+    cache.path: "_cache/"
+---
+
+```{r}
+pacman::p_load(
+  "tidyverse",
+  "patchwork",
+  install = FALSE
+)
+```
+
+Research in political science and public policy is often concerned with causal effects. Does a specific piece of legislation reduce intergenerational poverty? Does a US Supreme Court ruling cause increased polarization? Do gender-based legislative quotas cause improved gender-based economic outcomes? Do international economic sanctions prevent states from going to war? Quantitatively estimating these causal effects, however, is difficult task fraught with methodological pitfalls. Across scientific disciplines, randomized controlled trials have long been held up as the gold standard in causal thinking. If treatment conditions are randomly assigned across comparable samples of a population, differences in those samples' outcomes can be attributed directly to the treatment and researchers can safely tell causal stories. For many—if not most-questions in political science, however, estimating causal effects through experiments can be difficult, unethical, or impossible. Researchers cannot randomly assign countries to go to war, randomly assign states to adopt specific policies, or randomly assign legislators to win or lose elections. 
+
+In the absence of experimental data on most political phenomena, researchers must work with observational data. However, existing observational data reflects already-realized outcomes. For instance, a country’s level of level of democracy, legislative system, and other political choices are all influenced by decades of prior institutional, political, social, and economic choices, as well as broader geographic and historical trends. Similarly, the behavior of individuals such as residents, voters, legislators, and political leaders is influenced by a host of other external factors. Observations in a dataset—be they individuals, Census blocks, states, or countries—self-select into (or out of) treatment conditions. As a result, we cannot directly compare observations that chose specific treatments.
+
+A robust cross-disciplinary body of methods has emerged in the past decades to tackle the problem of observational causal inference. Econometricians have focused on quasi-experimental methods such as difference-in-difference analysis, regression discontinuity designs, instrumental variable approaches, and synthetic controls [@Angrist2009]. Epidemiologists and biostatisticians, on the other hand, have developed matching and weighting techniques based on causal models and *do*-calculus [@Pearl2016; @Pearl2018; @Robins2015]. Each approach is designed to account for endogenous self-selection bias and recover causal effects in non-experimental data.
+
+In parallel to developments in observational causal thinking, advances in computational power in the past decade have led to the broader adoption of Bayesian statistical methods. Bayesian analysis provides an alternative to more more standard null hypothesis significance testing (NHST), where researchers test for the probability of observed data given a null hypothesis, or $P(\text{data} \mid H_0)$. In contrast, Bayesian analysis determines the probability of a specific hypothesis given the existing data, or $P(H \mid \text{data})$. When measuring the uncertainty of estimates under NHST, we calculate confidence intervals (often at a 95% level), which indicate that if we collected our data many more times, 95% of those confidence intervals would contain the true population parameter we are interested in. With Bayesian methods, uncertainty can be described with an entire posterior distribution of plausible values that can be summarized in various ways. We can use the posterior distribution to calculate a credible interval (at 95%, for instance) that would allow us to say that there is a 95% probability that the true population parameter falls in the range of the interval. This Bayesian estimand captures what researchers are most often interested in—the probability of a hypothesis being true, rather than the probability of seeing an effect of a certain size in a world where there is a null effect.
+
+This headway in both observational causal inference and Bayesian methods lays the foundation for analysis of causal effects that is more robust, deals more directly with uncertainty, and is more easily interpretable. Most statistical approaches for causal inference, such as difference-in-differences, regression discontinuity designs, and other quasi-experimental designs, map easily into a Bayesian paradigm. Unfortunately, this is not the case with research designs that rely on matching and weighting. Due to mathematical and philosophical incompatibilities, causal inference methods that rely on propensity multiple stages of models (i.e. a design model that estimates the probability of an observation selecting into treatment, which we then use to generate propensity scores and weights that we then use in an outcome model to estimate the effect of treatment) cannot use a Bayesian approach. Because propensity scores and weights are not part of the formal data-generating process for the relationship between a treatment and an outcome, we cannot model them with Bayesian methods. In a critique of attempts in bio-statistics at calculating propensity scores with Bayesian methods, Robins, Hernán, and Wasserman conclude that "Bayesian inference must ignore the propensity score" [-@Robins2015, p. 297].
+
+In this article, we seek to reconcile these parallel developments, merging Bayesian analysis with propensity score-based causal estimation methods. We introduce a method for working with propensity scores in a pseudo-Bayesian manner, allowing researchers to work with posterior distributions of causal effects and make causal inferences without the need for null hypotheses. In particular, we provide a general method for incorporating propensity score-based weights from a treatment model into an outcome model in the spirit of Bayes, propagating the uncertainty of these weights from the treatment model to the outcome model. The approach applies to situations where confounding is addressed through inverse probability weighting, both in a simple single-time-period setting and in a time-series cross-sectional panel data setting with marginal structural models [@Robins2000; @Blackwell2018]. We begin with a brief overview of confounding and endogeneity, introducing concepts from the language of causal graphs and *do*-calculus to help isolate causal effects [@Pearl2016; @Pearl2018] and describe how to statistically adjust for confounding with both inverse probability weighting and marginal structural models. We then explore the methodological reasons why Bayesian analysis is incompatible with these propensity score-based approaches to causal inference and propose an alternative (and compatible) pseudo-Bayesian estimator. Finally, we compare this estimator to existing approaches and demonstrate its results through simulation and by replicating previous research.
+
+
+# Dealing with confounding
+
+Recent developments in causal inference provide a standardized vocabulary and systematized calculus for discussing causal effects through directed acyclic graphs (DAGs) [@Pearl2016; @Pearl2018; @Robins2015]. In the left panel of @fig-simple-dag, we can see the relationship between some treatment or intervention $X$ (e.g. legislative quotas, foreign aid, economic sanctions, etc.) and an outcome $Y$ (e.g. improved minority representation in parliament, reduced poverty, decreased likelihood of war, etc.). The causal effect of $X$ on $Y$ is represented with an arrow connecting the two nodes. A third node $Z$ exerts a causal effect on both the treatment $X$ and the outcome $Y$. This variable confounds the $X \rightarrow Y$ relationship and opens up an alternative path between the treatment and outcome. For example, if we are interested in measuring the causal effect of foreign aid ($X$) on poverty ($Y$) (see the right panel of @fig-simple-dag) and we observe a positive correlation between the two in a dataset, that correlation could be caused by some other confounding factor, like a country's level of economic development ($Z_1$), or improvements in a country’s overall level of democracy or economic development ($Z_2$).
+
+```{r dag-simple, echo=FALSE}
+#| label: fig-simple-dag
+#| fig-width: 12
+#| fig-height: 4
+#| out-width: 0.5\\linewidth
+#| fig-cap: "(L) DAG showing the causal effect of of $X$ on $Y$, confounded by $Z$; (R) DAG showing the causal effect of foreign aid on poverty, confounded by $Z1$ (economic development) and $Z2$ (democracy)"
+simple_dag <- readRDS("R/simple-dag.rds")
+labeled_dag <- readRDS("R/labeled-dag.rds")
+simple_dag | labeled_dag
+```
+
+We can remove the effect of confounders like $Z$, $Z_1$, and $Z_2$ through statistical adjustment. For instance, if we compare countries with similar (or even identical) levels GDP per capita and democracy, we mitigate the confounding effects of economic development democratic development.
+
+We can use a variety of methods to deal with backdoor confounding. Quasi-experimental research designs like difference-in-differences, regression discontinuity, instrumental variables, and synthetic controls each use specific real-world situations to approximate treatment and control groups to remove the effect of confounders on the relationship between treatment and outcome. Alternatively, we can adjust for confounders through matching and weighting. One common approach—particularly in epidemiology and biostatistics—is to adjust for confounding using inverse probability of treatment weights (IPTWs). 
+
+## Inverse probability weighting
+
+Causal inference using inverse probability weighting involves a two-stage estimation process. In the first stage, often called the *treatment stage* or *design stage*, we create a model that predicts an observation’s choice to receive the treatment based on all confounders identified in a causal graph. We then use the design model to calculate a propensity score for each observation. Next, we calculate inverse probability of treatment weights for each observation based on its propensity of treatment. Weights are calculable for both binary and continuous treatments:
+
+$$
+w_{\text{binary}} = \frac{\overbrace{X_i}^{\text{\clap{Treatment}}}}{\underbrace{\pi_i}_{\text{\clap{Propensity}}}} + \frac{1 - X_i}{1 - \pi_i}
+$$ {#eq-iptw-binary}
+
+$$
+w_{\text{continuous}} = \frac{
+\overbrace{f_{X_i} (X_i; \mu, \sigma^2)}^{\text{Probability distribution of treatment } X}
+}{
+\underbrace{f_{X_i \mid Z_i} (X_i \mid Z_i; \mu, \sigma^2)}_{\substack{\text{Probability distribution of treatment } X \\ \text{given confounders } Z}}}
+$$ {#eq-iptw-continuous}
+
+The ultimate purpose of these weights IPTWs ($w$) is to create pseudo-populations of treated and untreated observations that are comparable across all levels of confounders. We can give less weight to observations with a low probability of being treated and who subsequently were not treated and more statistical weight to observations with a high probability of being treated but who were not. Conversely, we can give more weight to treated observations with a low probability of being treated and less weight to treated observations with a high probability of being treated. After scaling each observation by this IPTW, we can create comparable treated and untreated pseudo populations. 
+
+```{r echo=FALSE}
+#| label: fig-iptw-hist
+#| fig-width: 5
+#| fig-height: 5.5
+#| out-width: 0.6\\linewidth
+#| fig-cap: "Distribution of both original and weighted propensity scores; weighted scores represent comparable pseudo-populations of treated and untreated observations"
+
+library(patchwork)
+
+iptw1 <- readRDS("R/iptw-hist-1.rds")
+iptw2 <- readRDS("R/iptw-hist-2.rds")
+
+iptw1 / iptw2
+```
+
+@fig-iptw-hist demonstrates the intuition visually using a simulated binary treatment. In the top panel of @fig-iptw-hist, fewer observations received the treatment than not, and those who did not had a lower average propensity of treatment, visible in the cluster in the lower range of propensities. This represents selection bias—those who did not receive the treatment already had a low probability of seeking out the treatment in the first place. As a result, the treated and untreated populations are not comparable. The bottom panel of @fig-iptw-hist shows the distribution of propensity scores after weighting by the IPTWs. The lighter distributions represent pseudo-populations of treated and untreated observations, and these two groups now mirror each other fairly well. Both low-propensity treated observations and high-propensity untreated observations are scaled up and receive more statistical weight to improve cross-group comparability.
+
+Having calculated IPTWs and created comparable pseudo-populations, the final stage in causal estimation is to create an outcome model the estimates the effect of the treatment on the outcome, weighted by $w$. The resulting effect of X on Y represents a causal effect, with all observable confounding accounted for and adjusted away.
+
+
+## Marginal structural models
+
+The IPTW approach to adjusting for confounding can be extended to more complex data generating processes where treatments, outcomes, and confounders vary over time. In these cases, marginal structural models allow us to adjust for time-invariant confounders, time varying confounders, previous levels of the outcome, and treatment history [@Robins1997; @Robins2000; @Cole2008; @Imai2015; @Blackwell2018; @Saarela2015]. 
+
+```{r dag-1, echo=FALSE}
+#| label: fig-msm-dag
+#| fig-width: 16
+#| fig-height: 9
+#| out-width: 1\\linewidth
+#| fig-cap: "DAG showing the contemporaneous effect of $X_t$ on $Y_t$, given contemporaneous confounders $Z_t$ and treatment history $X_{t-1}$"
+msm_dag <- readRDS("R/msm-dag.rds")
+msm_dag
+```
+
+@fig-msm-dag illustrates one possible DAG showing the relationship between treatment $X$, outcome $Y$, and confounders $Z$ in three different time periods ($t$, $t-1$, and $t-2$). Following the logic of *do*-calculus, if we are interested in measuring and isolating the contemporaneous effect of $X_t$ on $Y_t$, we no longer need to adjust only for $Z_t$, as we did in the simpler IPTW example above. The previous value of $X$, or the treatment history $X_{t-1}$ is now also a confounder that needs to be accounted for statisticially.
+
+When creating IPTWs for data generating processes with repeated measures, as in @fig-msm-dag, the resulting weights need to account for the temporal nature of the data and incorporate weights from previous time periods. This can be done by taking the cumulative product of each observation's weights over time, both for binary and continuous weights:
+
+$$
+w_{it; \text{ binary}} = \prod^{t}_{t = 1} \frac{\Pr[X_{it} \mid X_{it-1},~ C_{i}]}{\Pr[X_{it} \mid \underbrace{Z_{it}}_{\substack{\text{\clap{Time-varying}} \\ \text{\clap{confounders}}}}, ~ X_{it-1},~ Y_{it-1},~ \underbrace{C_{i}}_{\substack{\text{\clap{Time-invariant}} \\ \text{\clap{confounders}}}}]}
+$$ {#eq-msm-binary}
+
+$$
+w_{it; \text{ continuous}} = \prod^{t}_{t=1} \frac{
+\overbrace{f_{X_{it} \mid X_{it-1},C_{i}}[(X_{it} \mid X_{it-1},~ C_{i}); ~\mu, ~\sigma^{2}]}^{\substack{\text{Probability distribution of treatment } X \text{ given past } \\ \text{treatment } X_{t-1} \text{ and time-invariant confounders } C}}
+}{
+\underbrace{f_{X_{it} \mid Z_{it}, X_{it-1}, Y_{it-1}, C_{i}}[(X_{it} \mid Z_{it}, ~ X_{it-1},~ Y_{it-1},~ C_{i}); ~\mu, ~\sigma^{2}]}_{\substack{\text{Probability distribution of treatment } X \text{ given time-varying confounders } Z, \\ \text{past treatment } X_{t-1}, \text{ past outcome } Y_{t-1}, \text{ and time-invariant confounders } C}}
+}
+$$ {#eq-msm-continuous}
+
+The process for estimating a causal effect using a marginal structural model follows the same two-stage procedure as standard IPTW adjustment. We first use a design stage model to predict treatment status using all backdoor confounders identified in a causal graph, including past treatment status, past level of the outcome, time-invariant covariates, and time-varying covariates. We then generate IPTWs using either @eq-msm-binary or @eq-msm-continuous, depending on the nature of the treatment variable. We finally fit an outcome model weighted by $w$ to estimate the adjusted effect of the treatment on the outcome.
+
+
+# Bayesian propensity scores
+
+Adjustment through inverse probability weighting---both with single time periods and with more complex marginal structural models---is typically done with frequentist statistical methods. The design stage model is ordinarily fit using logistic regression, while the outcome model is fit using weighted least squares regression with standard errors adjusted post-estimation through bootstrapping [@Hernan2020, 152]. In the case of marginal structural models, the outcome stage typically uses generalized estimating equations (GEE) to account for the panel structure of the data [@Thoemmes2016; @Hernan2020, 147]. Why bother developing a Bayesian procedure in the first place then if these alternative approaches already exist?
+
+First, in practical terms there is no shortage of examples demonstrating Bayesian estimators often have superior long-run properties and provide more accurate estimates than their frequentist alternatives in many common causal modeling applications including, though not necessarily limited to, matching and propensity score methods [@Alvarez2021; @Capistrano2019; @Kaplan2012; @Liao2020; @Zigler2014], g-computation [@Keil2017], instrumental variable estimation [@Hollenbach2018], and in the presence of heterogeneous treatment effects and high dimensional applications more broadly [@Antonelli2020; @Pang2021; @Hahn2020]. If, as researchers, we aspire to be *less wrong*, it is worth thinking seriously about a proper approach to quantifying uncertainty in our causal estimands.
+
+Second, in cases where the data comprise an apparent population, for example all sovereign countries between 1945 and 2020, uncertainty estimates and test statistics derived from asymptotic assumptions of repeated sampling and exact long-run replications that form the foundation of the null hypothesis significance testing (NHST) framework and valid interpretations of confidence intervals are logically difficult to defend [@Berk1995; @Gill2020; @Western1994]. Under such circumstances a Bayesian framework provides a principled and logically consistent alternative that allows us to quantify the uncertainty in our parameter estimates conditional on the observed data and prior assumptions about the universe of effect sizes we believe to be theoretically possible [@Gelman2012; @Jackman2004].
+
+Finally, a Bayesian framework also provides us with the ability to acknowledge that we are virtually always uncertain about the set of confounders we need to adjust for in observational settings and employ model averaging or stacking based approaches to average across different specifications for the design-stage model [@Yao2018; @Hollenbach2020]. We can then derive a distribution of weights as illustrated below and propagate the uncertainty inherent in design stage estimation on to the outcome stage model. Where residual correlation within units is a concern, Bayesian hierarchical approaches provide an alternative to GEE models as it is possible to obtain a population-averaged estimate by integrating out the group-level effects.
+
+## The impossibility of true two-stage Bayesian analysis
+
+While Bayesian approaches to causal inference provide a wealth of information about the uncertainty and distributions of estimates, Bayesian regression is not directly applicable to two-stage models involving propensity scores or inverse probability weights, for both statistical and philosophical reasons [@Robins2015]. To explore this incompatibility, we can define the average treatment effect (ATE) of a binary intervention with the estimand in @eq-ate. Here we subtract the average outcome $Y$ when treatment $T$ is both 0 and 1, following adjustment for confounders $X$.
+
+$$
+\Delta_{\text{ATE}} = E[ \overbrace{E \left( Y_i \mid T_i = 1, X_i \right)}^{\substack{\text{Average outcome } Y \text{ when} \\ \text{treated, given confounders }X}} - \overbrace{E \left( Y_i \mid T_i = 0, X_i \right)}^{\substack{\text{Average outcome } Y \text{ when} \\ \text{not treated, given confounders }X}} ]
+$$ {#eq-ate}
+
+Expressed more generally, the ATE can be calculated by some arbitrary function $f$ that incorporates information from $\symbf{T}$, $\symbf{X}$, and $\symbf{Y}$, as seen in @eq-f-delta. 
+
+$$
+f(\Delta \mid \symbf{T}, \symbf{X}, \symbf{Y}) 
+$$ {#eq-f-delta}
+
+This function $f$ can represent any kind of estimation approach, including two-stage inverse probability weighting, matching, or design-based quasi-experimential strategies. This more general definition of the ATE also fits well in a Bayesian paradigm. Since $\Delta$ is unknown, we can can build a Bayesian model to estimate an unknown $\theta$ parameter and set $\theta = \Delta$, conditional on a likelihood for $(\symbf{T}, \symbf{X}, \symbf{Y})$ and a prior distribution for $\theta$ [@Liao2020]. We can thus express @eq-f-delta using Bayes' formula, as seen in @eq-f-bayes. With observed data $\symbf{T}$, $\symbf{X}$, and $\symbf{Y}$, we can proceed with model fitting and sampling and obtain an estimate for $\theta$, or our ATE $\Delta$. 
+
+$$
+\overbrace{P[\theta \mid (\symbf{T}, \symbf{X}, \symbf{Y})]}^{\substack{\text{Posterior estimate} \\ \text{of } \theta \text{, given data}}} \quad \propto \quad \overbrace{P[(\symbf{T}, \symbf{X}, \symbf{Y}) \mid \theta]}^{\substack{\text{Likelihood for existing} \\ \text{data, given unknown }\theta}} \quad \times \quad \overbrace{P[\theta]}^{\substack{\text{Prior} \\ \text{for }\theta}}
+$$ {#eq-f-bayes}
+
+Crucially, however, @eq-f-bayes does not include any propensity scores or weights. Inverse probability of treatment weights are not part of the data-generating process for $\theta$ and thus are not part of either the likelihood or the prior. Weights are a part of the estimation process, not reality. We use weights solely for approximating pseudo populations of treated and untreated observations—these weights do not determine observations' actual behavior or cause changes in the outcome, and therefore are not defined as part of the formal model for $\theta$. The absence of propensity scores or weights in the likelihood is the foundation for @Robins2015's critique of Bayesian attempts at causal inference with inverse probability weighting. They explain that "Bayesian logic is rigidly defined: given a likelihood and a prior, one turns the Bayesian crank to obtain a posterior" [@Robins2015, 297]. There is no place for weights in the Bayesian engine—since weights do not fit in either the likelihood or the prior, the posterior estimate of $\theta$ cannot reflect the pseudo-populations required for statistical adjustment of confounders. True Bayesians therefore cannot use inverse probability weights in causal inference.
+
+This is disappointing, given the advantages of Bayesian analysis noted earlier. The ability to make inferences with entire posterior distributions of causal effects rather than frequentist null hypotheses can provide us with richer details about those effects, and modeling the uncertainty of our estimates allows us to better explore the robustness of our findings.
+
+## Incorporating propensity scores and weights into Bayesian models
+
+At the end of their critique, @Robins2015 state that though it is not possible to use a fully Bayesian approach with two-stage causal inference model, it is possible to adopt a "Bayes-frequentist" compromise in order to better analyze and work with the uncertainty inherent in causal estimation. @Liao2020 propose one such compromise and outline a method of incorporating propensity scores into Bayesian estimation of causal effects. To do so, they represent propensity scores as a new parameter $\nu$ that is used by a general function that estimates the causal effect given $\symbf{T}$, $\symbf{X}$, $\symbf{Y}$, and $\nu$, representing the propensity score-based weights. This $\nu$ parameter is estimated using a design stage model using both treatment status $\symbf{T}$ and confounders $\symbf{X}$. By marginalizing over the distribution of the product of the outcome model and the design model, we can eliminate the $\nu$ term, resulting in an estimand in @eq-nu that is identical to @eq-f-delta.
+
+$$
+\overbrace{f(\Delta \mid \symbf{T}, \symbf{X}, \symbf{Y})}^{\substack{\text{Estimand for} \\ \text{the ATE, without } \nu}} = \int_\nu \overbrace{f(\Delta \mid \symbf{T}, \symbf{X}, \symbf{Y}, \nu)}^{\substack{\text{Outcome model} \\ \text{with } \nu}}\ \overbrace{f(\nu \mid \symbf{T}, \symbf{X})}^{\substack{\text{Design model} \\ \text{creating propensity} \\ \text{scores with } T \text{ and } X}}\ \mathrm{d} \nu
+$$ {#eq-nu}
+
+$\nu$ represents the posterior distribution of propensity scores or treatment weights, and it contains complete information about the uncertainty in these weights. By incorporating the posterior distribution of $\nu$ into the outcome stage of the model, we're able to propagate the variation in weights into the final estimation. We can thus overcome the main shortcoming of Bayesian approaches to two-stage estimation—weights are now a formal parameter in the model (see @eq-f-bayes-nu).
+
+$$
+\overbrace{P[\theta \mid (\symbf{T}, \symbf{X}, \symbf{Y}, \nu)]}^{\substack{\text{Posterior estimate} \\ \text{of } \theta \text{, given data and weights}}} \quad \propto \quad \overbrace{P[(\symbf{T}, \symbf{X}, \symbf{Y}, \nu) \mid \theta]}^{\substack{\text{Likelihood for existing} \\ \text{data, given unknown }\theta}} \quad \times \quad \overbrace{P[\theta]}^{\substack{\text{Prior} \\ \text{for }\theta}}
+$$ {#eq-f-bayes-nu}
+
+Instead of calculating a single value of $\nu$ (i.e. a single set of propensity scores or weights) from the design stage of the model, we can incorporate a range of values of $\nu$ from the posterior distribution of the design model. To do so, we first fit a Bayesian design-stage model to calculate the posterior probabilities of treatment. We then generate $K$ samples of propensity scores from the posterior distribution of the treatment. $K$ can vary substantially, though it is often the number of posterior chains from the Bayesian model. Next, for each of the $K$ samples of scores, we generate inverse probability weights and build an outcome model (either Bayesian or frequenist) using those weights. Finally, we combine and average the results from these many outcome models to calculate the final $\nu$-free causal effect. The procedure is similar to multiple imputation or bootstrapping—we run the same outcome model many times using different variations of weights and then combine and average the results.
+
+Importantly, this approach is not fully Bayesian, but pseudo-Bayesian. The parameters for the analysis are estimated using separate independent models: $\nu$ in the design stage and $\theta$ in the outcome stage. To qualify as a truly Bayesian approach, $\nu$ and $\theta$ would need to be estimated jointly and simultaneously. 
+
+
+## Bayesian Pseudo-Likelihood Estimation
+
+There are several different approaches one might take to accounting for uncertainty in the design stage weights when estimating the outcome stage of a marginal structural model. It is, for example, possible to pass a different random draw from the distribution of weights directly to the model at each iteration of the MCMC sampler though such an approach quickly becomes intractable in terms of computation. In this section we outline an alternative computationally efficient approach that requires passing only the location and scale of the design stage weights to the outcome model and propagates uncertainty by placing a prior on the scale component of the weights.
+
+To implement our pseudo-likelihood estimator, we take as our starting point recent developments in the application of Bayesian methods for the analysis of complex survey designs [@Savitsky2016; @Williams2020b; @Williams2020a]. Following @Savitsky2016, we can express the Bayesian pseudo-posterior as
+
+$$
+\hat{\pi}( \theta~|~y, \tilde{w}) ~\propto~ \left [\prod_{i = 1}^{n} \Pr(y_{i} ~|~ \theta)^{\tilde{w_{i}}}\right ]\pi(\theta)
+$$ {#eq-pseudo-likelihood}
+
+\noindent where $\prod_{i = 1}^{n} \Pr(y_{i} ~|~ \theta)^{\tilde{w_{i}}}$ represents the pseudo-likelihood of the observed data $y$ and $\pi(\theta)$ is a prior on the unconstrained parameter space.
+
+If we are interested in the average treatment effect of some binary treatment $X$ at times $t$ and $t-1$, the posterior predictive distribution of the stabilized inverse probability weights from the design stage $SW$ is
+
+$$
+\text{SW}_{it} = \prod^{t}_{t = 1} \frac{\int\Pr(X_{it}~ | ~X_{it-1},~ C_{i})\pi(\theta)d\theta}{\int\Pr(X_{it}~ |~Z_{it}, ~ X_{it-1},~ Y_{it-1},~ C_{i})\pi(\theta)d\theta}
+$$ {#eq-bayes-stabilized-weights}
+
+<!--TODO: Definitely need to have someone verify that my math is correct here -->
+
+\noindent where $i$ and $t$ index groups and periods respectively. The observed treatment status and outcome for the $i^{th}$ group at each period $t$ are represented by $X$ and $Y$ respectively. $C$ is the observed value of the baseline time invariant confounders and $Z$ is a set of time varying covariates that satisfies sequential ignorability [@Blackwell2018]. While we focus mainly on the average treatment effect at times $t$ and $t-1$ here, it is possible to estimate longer lags, different estimands such as the average treatment effect in the treated, and continuous treatments.
+
+We parameterize the regularized weights for each observation, denoted $\tilde{w_{i}}$ in @eq-pseudo-likelihood, in the outcome model as
+
+$$
+\tilde{w}_{i} = \lambda_{i} + \delta_{i} \cdot \pi{(\delta)} 
+$$
+
+\noindent where $\lambda$ and $\delta$ represent a vector containing the location the weights--typically the mean, though it may be preferable to use the posterior median under certain circumstances--and the scale of the posterior distribution of the stabilized weights for each observation $i \in \{1, 2,\dots, n\}$. At each iteration of the MCMC algorithm, $\pi{(\delta)}$ is a vector of length $n$ sampled from a prior distribution on the scale of the weights that allows us to both model the uncertainty in the design stage weights and regularize their variance to stabilize computation by ruling out unrealistic or impossible values.
+
+This of course requires the researcher to specify a proper Bayesian prior on the scale component of the weights to avoid severe convergence issues. In practice, we recommend a weakly to moderately informative prior distribution that concentrates the bulk of the prior density between 0 and 1.5. The exponential distribution with rate $\lambda > 3.5$ or Beta distribution with shape parameters $\alpha = 2$ and $\beta \ge 2$ tend to perform well in simulations. Although we do not consider such an approach here, one might also consider regularizing the location of the weights in a similar fashion in cases where there are a large number of observations with excessively large inverse probability weights.
+
+This Bayesian pseudo-likelihood approach lends itself to relatively straight forward extensions such as multilevel regression as recently illustrated by @Savitsky2021 in the context of weighted survey designs. Perhaps more notably, it allows us to consider more than one possible specification for the design stage model via Bayesian weighting procedures such as model averaging or posterior stacking [@Yao2018; @Montgomery2010; @Hollenbach2020]. This may provide a way of reducing the degree to which the outcome stage model is sensitive to the design stage specification [@Kaplan2014; @Zigler2014], a common criticism of propensity score based weighting estimators.
+
+# Simulation Study
+
+To evaluate the performance of our proposed model in terms of its ability to recover the true parameter values, we employ a modified version of the simulation study in @Blackwell2018. As depicted in @fig-dag-simstudy, we assume that values of $X_{i}$ at time $t-1$ are independent of outcomes $Y_{i}$ at time $t$ and that $X_{i}$ has only a contemporaneous treatment effect on $Y_{i}$ at each time $t$--that is, the true lagged treatment effect of $X_{it-1}$ on $Y_{it}$ is 0. Furthermore, past values of $Y_{it-1}$ are independent of $Y_{it}$, conditional on the treatment $X_{it}$. To identify the causal effect of $X_{it-1}$ and $X_{it}$ on $Y_{it}$ we need to condition on the minimum adjustment set that blocks the unmeasured time invariant confounder $\upsilon_{i}$, which in this case is $\{Y_{it-1}, Z_{it}\}$ and satisfies sequential ignorability for the causal path $X_{it} \longrightarrow Y_{it}$ [@Blackwell2018, 1077].
+
+In our simulations we randomly vary whether the time varying covariate $Z_{it}$ depends on past values of the treatment--that is, whether $Z_{it}$ is endogenous to the treatment $X_{it-1}$--since under such circumstances $Z_{it}$ is post-treatment with respect to $X_{it-1}$ and conditioning on it results in bias of unknowable direction and magnitude [@Blackwell2018; @Montgomery2018]. A detailed explanation of the data generation process for the simulations and a discussion of additional considerations, interested readers may consult the online appendix.
+
+```{r fig-dag-simstudy, echo=FALSE, dpi=600, fig.height=9, fig.width=16, fig.align='center', cache=TRUE, fig.cap="DAG Depicting the Data Generation Process for the Simulations"}
+## Define the coordinates for the complex DAG
+sim_dag_coords <- list(
+  x = c(X_L2 = 0, X_L1 = 1, X = 2, X_T1 = 3, Y_L2 = 0.5,
+        Y_L1 = 1, Y = 2.2, Z_L2 = 0, Z_L1 = 1, Z = 1.7, 
+        Z_T1 = 3, U = 1.2),
+  y = c(X_L2 = 1, X_L1 = 1, X = 1, X_T1 = 1, Y_L2 = 0.5, 
+        Y_L1 = 0.5, Y = 0.5, Z_L2 = 0, Z_L1 = 0, Z = 0, 
+        Z_T1 = 0, U = 0.25)
+)
+
+## Plotmath labels for the complex DAG
+sim_dag_labels <- list(
+  X_L2 = "...", Z_L2 = "...",
+  Y_L2 = "Y[i*t-2]", X_L1 = "X[i*t-1]", 
+  Z_L1 = "Z[i*t-1]", Y_L1 = "Y[i*t-1]",
+  X = "X[i*t]", Z = "Z[i*t]",
+  Y = "Y[i*t]", X_T1 = "...", 
+  Z_T1 = "...", U = "upsilon[i]"
+)
+
+## Creating a More Complex DAG using ggdag syntax
+sim_dag <- dagify(
+  Y_L1 ~ X_L1 + U,
+  Z_L1 ~ X_L2 + U,
+  X_L1 ~ Z_L2,
+  Y ~ X + U,
+  X ~ Y_L1 + Z,
+  Z_T1 ~ X,
+  X_T1 ~ Y,
+  Z ~ X_L1 + U,
+  coords = sim_dag_coords,
+  labels = sim_dag_labels
+)
+
+# Modifications for the contemporaneous effect of X on Y
+sim_dag_tidy <- sim_dag %>%
+  # Convert the DAG to a tibble
+  tidy_dagitty() %>% 
+  # Create Path-Specific colors and transparencies
+  mutate(
+    # Color for the edges
+    .edge_colour = case_when(
+      name == "X_L1" & to == "Z" ~ "blue",
+      name == "U" ~ "#FF3030",
+      TRUE ~ "black"
+    ),
+    .edge_type = case_when(
+      name == "X_L1" & to == "Z" ~ "solid",
+      TRUE ~ "dashed"
+  ))
+
+# Generate the DAG for the contemporaneous effect of X on Y
+ggplot(data = sim_dag_tidy, 
+  aes(x = x, y = y, xend = xend, yend = yend)
+) +
+  # Add the graph edges
+  geom_dag_edges(aes(edge_color = .edge_colour, edge_linetype = .edge_type), 
+    edge_width = 1.5
+  ) +
+  # Add the graph nodes
+  geom_dag_node(alpha = 0) +
+  # Add the graph text
+  geom_dag_text(
+    aes(label = label),
+    parse = TRUE,
+    size = 11,
+    color = "black",
+    family = "serif",
+    show.legend = FALSE
+  ) +
+  # Apply theme settings
+  theme_dag(
+    base_size = 24,
+    base_family = "serif",
+    strip.background = element_blank(),
+    plot.caption.position = "plot",
+    legend.position = "top"
+  ) +
+  # Add a legend for the edge colors
+  scale_edge_color_identity() +
+  # Tweak the legend aesthetics
+  guides(edge_alpha = "none", edge_color = "none", edge_linetype = "none") 
+```
+
+## Design
+
+To assess how the model performs under different conditions and evaluate the asymptotic properties of our Bayesian pseudo-likelihood procedure, we vary both the number of groups--we consider 25, 45, 65, 85, and 100--and the number of periods per group--20 and 50--which results in $5 \times 2 \times 2$ unique period-group-condition combinations. For each combination, we repeat the simulation 100 times giving us 2,000 simulated data sets in total on which to evaluate the model and covering dimensions that are approximately representative of most cross-sectional time series applications in political science.
+
+For each data set, we estimate the design stage models for the numerator and denominator of the weights via Bayesian logistic regression models of the form
+
+```{=tex}
+\begin{align*}
+\Pr(X_{it} = 1 ~|~ \theta_{it}) &\sim \textit{Bernoulli}(\theta_{it})\\
+&\theta_{it} = \text{logit}^{-1}(\alpha + X_{n}\beta_{k})\\
+\text{with priors}\\
+\alpha &\sim \textit{Normal}(0, ~2) \quad \quad \beta_{k} \sim \textit{Normal}(0,~ 1)\\
+\end{align*}
+```
+
+\noindent where $\alpha$ represents the global intercept, $\beta$ is a vector of coefficients of length $k$, and $X_{n}$ is an $n \times k$ matrix of predictors for the numerator and denominator of the weights. After estimating the location and scale of the distribution of the weights as discussed in the preceding section, we fit an outcome stage model of the form
+
+```{=tex}
+\begin{align*}
+y_{it} &\sim \textit{Normal}(\mu_{it}, \epsilon^{2})^{\tilde{w}_{it}}\\
+&\mu_{it} = \alpha + \beta_{1}X_{it} + \beta_{2}X_{it-1} + \epsilon  & \\
+\text{where}\\
+\tilde{w}_{it} &\sim \lambda_{it} + \delta_{it} \cdot \pi{(\delta)}\\
+\text{with priors}\\
+\alpha &\sim \textit{Normal}(\bar{y}, ~ 2 \cdot \sigma_{y}) & \beta_{k} &\sim \textit{Normal}\left(0, ~ 1.5 \cdot \frac{\sigma_{y}}{\sigma_{x}}\right)\\
+\epsilon  &\sim  \textit{Exponential}\left(\frac{1}{\sigma_{y}}\right)  & \delta_{it} &\sim \textit{Beta}(2, ~ 5)\\
+\end{align*}
+```
+
+The response $y$ is assumed Gaussian with mean $\mu$ and variance $\sigma^{2}$ with the pseudo-likelihood of each observation being the product of the likelihood and the sampled weight $\tilde{w}_{it}$. Priors on the coefficients are assigned independent normal priors with mean 0 and standard deviation $1.5 \cdot\frac{\sigma_{y}}{\sigma_{x}}$ where $\sigma_{x}$ and $\sigma_{y}$ are the standard deviation of the predictor and response respectively. We place a slightly more diffuse prior on the global intercept $\alpha$ which is assumed normal with mean $\bar{y}$ and standard deviation $2 \cdot \sigma_{y}$. For the dispersion parameter $\epsilon$ we assign an exponential prior with rate $\frac{1}{\sigma_{y}}$. This approach automatically adjusts the scale of the priors to the data and can be regarded as weakly to moderately informative [@Gelman2020, 124-126]. At each iteration of the sampler, the prior on the scale of the weights is drawn from a regularizing Beta with shape parameters $\alpha = 2$ and $\beta = 5$ and the weights calculated for each observation as described in the preceding section.
+
+In addition to our proposed marginal structural model, we also fit an auto-regressive distributed lag specification to each of the simulated data sets of the form
+
+```{=tex}
+\begin{align*}
+y_{it} &\sim \textit{Normal}(\mu_{it}, \epsilon^{2})\\
+&\mu_{it} = \alpha + \beta_{1}X_{it} + \beta_{2}X_{it-1} + \beta_{3}Y_{it-1} + \beta_{4}Y_{it-2} +\\
+& \quad \beta_{5}Z_{it} + \beta_{6}Z_{it-1} + \epsilon\\
+\text{with priors}\\
+\alpha &\sim \textit{Normal}(\bar{y}, ~ 2 \cdot \sigma_{y}) \quad\quad\quad \beta_{k} \sim \textit{Normal}\left(0, ~ 1.5 \cdot \frac{\sigma_{y}}{\sigma_{x}}\right)\\
+\epsilon  &\sim  \textit{Exponential}\left(\frac{1}{\sigma_{y}}\right) &\\
+\end{align*}
+```
+\noindent where the priors on the intercept, coefficients, and dispersion parameter are based on the same auto-scaling procedure discussed above.
+
+Estimation is performed under version 2.30 of the probabilistic programming language Stan which implements the No-U-Turn sampler variant of Hamiltonian Markov Chain Monte Carlo [@Carpenter2017; @Hoffman2014]. For each of the models, we run four markov chains in parallel for 2,000 iterations each, discarding the first 1,000 after the initial warm-up adaptation stage. This number proved sufficient for convergence and leaves us with 4,000 posterior samples per model for subsequent analysis. Stan code for each of these outcome models is provided in the appendix.
+
+## Results
+
+![Simulation Results for the RMSE of the MSM and ARDL Models for the Lagged Treatment Effect](../figures/rmse_lagx_sim_results.jpeg){#fig-rmse-sims}
+
+The results of the simulations for each model are shown in @fig-rmse-sims, which depicts estimates for the root mean square error (RMSE) by model and dimensions under each condition for the bias in the estimate of $X_{it-1}$. We see that our Bayesian pseudo-likelihood estimator performs quite well overall, and as expected, tends to exhibit less bias when $Z_{it}$ is endogenous to the treatment history $X_{it-1}$ compared to the ARDL. Moreover, as the number of observed periods increases, the bias of the ARDL model grows while our MSM provides an approximately unbiased estimate of the average lagged treatment effect.
+
+![Distributions of the Posterior Means for the Contemporaneous and Lagged Treatment Effect Estimates from the MSM and ARDL Models](../figures/sim_results_distributions.jpeg){#fig-sim-dists fig-align="center"}
+
+@fig-sim-dists shows the distribution of posterior means for each model by condition and further illustrates that our Bayesian MSM approach performs reasonably well in terms of parameter recovery under both conditions while exhibiting substantially less bias than the ARDL approach in cases where time varying covariates are a function of past treatments. Overall, we see that our Bayesian pseudo-likelihood procedure performs quite well across a range of different scenarios that are roughly typical of data in political science and international relations.
+
+
+# Applied example
+
+TODO: After APSA, apply this by replicating an existing paper
+
+
+# Conclusion
+
+Computational and methodological advances in the past decade have laid the groundwork for substantial advances in quantitative political science and policy research. Developments in observational causal inference—in both quasi-experimental and propsensity score-based approaches—have enhanced the credibility and robustness of research findings, while increased use of Bayesian analysis has led to more results that are more interpretable and deal more directly with the uncertainty of estimates.
+
+As we have demonstrated, however, Bayesian methods are incompatible with approaches to causal inference that rely on propensity scores. To overcome this incompatibility, we propose a pseudo-Bayesian approach to the calculation and use of inverse probability weights that allows researchers to work with posterior distributions that correctly capture and reflect uncertainty.
+
